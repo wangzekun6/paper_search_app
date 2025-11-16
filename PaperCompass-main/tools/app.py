@@ -1,6 +1,6 @@
 """
 基于 Streamlit 的论文搜索和筛选 Web 界面。
-该模块提供了一个用户友好的界面，用于搜索和分析学术论文。
+该模块提供了一个用户友好的界面，用于搜索和分析学术论文。222222
 """
 
 import streamlit as st
@@ -15,10 +15,12 @@ import sqlite3
 from hashlib import sha256
 import traceback  # 新增：用于异常追踪
 import requests   # 新增：用于调用百度文心千帆 HTTP 接口
+from data_processing import load_json_data, preprocess_data, extract_features, augment_data
+from model import PASAModel
+from utils import setup_logger
 
-# 设置日志记录
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# 初始化日志
+logger = setup_logger()
 
 # 项目目录（改为更稳健的绝对路径）
 PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -68,74 +70,34 @@ DATA_SEARCH_MODES = ["所有论文", "特定会议"]
 BAIDU_QF_KEY = os.environ.get("BAIDU_QF_KEY", "bce-v3/ALTAK-WfFDFmuJ6ib2B0y18YhMq/17f6425aa0d49303cf3c88bae3730120ab2a9a3f")
 
 # 使用 Streamlit 缓存装饰器来优化加载性能
-@st.cache_data
+# 禁用缓存以确保每次加载数据时重新读取文件
 def load_conference_data(conference_name: str) -> Optional[List[Dict[str, Any]]]:
     """
     加载会议数据（支持动态年份选择）。
-    增强：多路径/递归搜索 JSON 文件并添加日志以便调试无法加载的问题。
     """
     # 找到会议数据所在目录
-    conf_dir = None
-    possible_dir = os.path.join(PROJECT_DIR, conference_name)
-    if os.path.isdir(possible_dir):
-        conf_dir = possible_dir
-    else:
-        # 允许用户传入类似子目录形式，尝试其他常见位置
-        alt = os.path.join(PROJECT_DIR, conference_name.lower())
-        if os.path.isdir(alt):
-            conf_dir = alt
-
-    if not conf_dir:
-        logger.warning("找不到 %s 的顶层目录 (%s). 将尝试在项目中递归搜索相关 JSON 文件。", conference_name, possible_dir)
-        # 递归在项目根下搜索文件名包含 conference_name 的 JSON 文件
-        json_files = glob.glob(os.path.join(PROJECT_DIR, "**", f"{conference_name}*.json"), recursive=True)
+    conf_dir = os.path.join(PROJECT_DIR, conference_name)
+    if not os.path.isdir(conf_dir):
+        logger.warning("找不到 %s 的顶层目录 (%s). 将尝试在项目中递归搜索相关 JSON 文件。", conference_name, conf_dir)
+        json_files = glob.glob(os.path.join(PROJECT_DIR, "**", f"*{conference_name}*.json"), recursive=True)
         if not json_files:
-            json_files = glob.glob(os.path.join(PROJECT_DIR, "**", f"*{conference_name}*.json"), recursive=True)
-        if not json_files:
-            # 仍未找到，提示并返回 None
-            logger.error("未能在项目中找到任何匹配 %s 的 JSON 文件。请检查目录结构。", conference_name)
+            logger.error("未能在项目中找到任何匹配 %s 的 JSON 文件。", conference_name)
             st.error(f"找不到 {conference_name} 的数据文件（递归搜索失败）。")
             return None
-        # 如果找到了文件，选择最新的一个并直接返回其内容
         latest_file = sorted(json_files)[-1]
-        try:
-            with open(latest_file, encoding='utf-8') as f:
-                data = json.load(f)
-                logger.info("通过递归搜索从 %s 加载到 %s 的数据。", latest_file, conference_name)
-                return data
-        except Exception as e:
-            logger.error("从 %s 加载 JSON 失败: %s", latest_file, e)
-            st.error(f"加载 {os.path.basename(latest_file)} 时出错: {e}")
-            return None
+        logger.info(f"加载会议数据: {conference_name}, 文件路径: {latest_file}")
+        return load_json_data(latest_file)
 
-    # 查找会议目录下的 JSON 文件（优先匹配 conference_name 前缀）
-    pattern = os.path.join(conf_dir, f"{conference_name}*.json")
-    json_files = glob.glob(pattern)
-    # 若未找到，尝试任何 JSON 文件（可能命名不同）
-    if not json_files:
-        json_files = glob.glob(os.path.join(conf_dir, "*.json"))
-        # 仍未找到则尝试递归搜索该目录下的 JSON
-        if not json_files:
-            json_files = glob.glob(os.path.join(conf_dir, "**", "*.json"), recursive=True)
-
+    # 查找会议目录下的 JSON 文件
+    json_files = glob.glob(os.path.join(conf_dir, "*.json"))
     if not json_files:
         st.error(f"未找到 {conference_name} 的 JSON 文件（在目录 {conf_dir} 内未发现）。")
         logger.error("目录 %s 中没有 JSON 文件。", conf_dir)
         return None
 
-    # 对文件进行排序并获取最新的一个
     latest_file = sorted(json_files)[-1]
-
-    try:
-        with open(latest_file, encoding='utf-8') as f:
-            data = json.load(f)
-            logger.info("已从 %s 加载数据 (%d 条记录)。", os.path.basename(latest_file), len(data) if isinstance(data, list) else 1)
-            return data
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error("加载 %s 时出错: %s", latest_file, e)
-        st.error(f"加载 {os.path.basename(latest_file)} 时出错: {str(e)}")
-        return None
-
+    logger.info(f"加载会议数据: {conference_name}, 文件路径: {latest_file}")
+    return load_json_data(latest_file)
 
 def create_search_sidebar() -> Dict[str, Any]:
     """
@@ -190,13 +152,13 @@ def create_search_sidebar() -> Dict[str, Any]:
         
         # 新增：启用文心千帆自然语言解析选项与内置 Key
         use_nl = st.checkbox(
-            "使用 文心千帆 自然语言查询（将用户自然语言转为英文关键词）",
+            "是否启用大模型查询解析（文心千帆）",
             value=False,
             help="启用后系统会调用文心千帆将您的自然语言查询解析为英文关键词，再使用这些关键词进行全文匹配检索。"
         )
 
         if use_nl:
-            st.info("将使用系统配置的文心千帆 Key（内置或环境变量）进行解析，无需手动输入。")
+            st.info("将使用大模型进行关键词提取，点击是否测试key已经配置成功。")
             if st.button("测试 文心千帆 Key"):
                 key_to_test = os.environ.get("BAIDU_QF_KEY", BAIDU_QF_KEY)
                 ok, msg = test_baidu_qf_api(key_to_test)
@@ -228,114 +190,31 @@ def load_data_source(data_search_mode: str) -> tuple:
         tuple: (data, source, key_fields_filters)，其中 data 是加载的数据，
                source 是数据源描述，key_fields_filters 包含关键字段筛选条件
     """
-    data = None
+    data = []
     source = ""
     key_fields_filters = {}
-    conference_categories = {}  # 存储每个会议的研究方向分类
-    
+    conference_categories = {}
+
     if data_search_mode == DATA_SEARCH_MODES[0]:  # All Papers
-        # 加载所有会议的论文数据
-        data = []
-        loaded_conferences = []
-        
         for conf in CONFERENCES:
             conf_data = load_conference_data(conf)
             if conf_data:
-                for paper_item in conf_data: # Ensure each paper has its source conference
+                conf_data = preprocess_data(conf_data)
+                for paper_item in conf_data:
                     paper_item['source'] = conf
                 data.extend(conf_data)
-                loaded_conferences.append(conf)
-        
-        if data:
-            st.session_state['data'] = data
-            source = "All Papers (" + ", ".join(loaded_conferences) + ")"
-            st.info(f"已加载 {len(loaded_conferences)} 个会议的 {len(data)} 篇论文")
-            # Clear conference-specific filters when switching to All Papers
-            if 'conference_categories' in st.session_state:
-                del st.session_state['conference_categories']
-            # key_fields_filters is returned by this function, so it will be an empty dict
-            # for 'All Papers' mode, which is correct. We ensure no old values are passed
-            # by re-initializing it at the start of the function.
-        else:
-            st.error("未能加载任何会议数据")
-            source = "No Data"
-    
-    elif data_search_mode == DATA_SEARCH_MODES[1]: # Conference(s)
+        source = "All Papers"
+    elif data_search_mode == DATA_SEARCH_MODES[1]:  # Specific Conferences
         conferences = st.multiselect("选择会议:", CONFERENCES)
-        st.session_state['selected_conferences'] = conferences
-        
-        if conferences:
-            # 加载所有选中会议的数据
-            data = []
-            for conf in conferences:
-                conf_data = load_conference_data(conf)
-                if conf_data:
-                    for paper_item in conf_data: # Ensure each paper has its source conference
-                        paper_item['source'] = conf
-                    data.extend(conf_data)
-                    # 加载会议的研究方向分类
-                    categories_loaded = load_conference_categories(conf)
-                    if categories_loaded:
-                        conference_categories[conf] = categories_loaded
-            
-            st.session_state['data'] = data
-            
-            # 设置数据源描述
-            if len(conferences) == 1:
-                source = conferences[0]
-            else:
-                source = "+".join(conferences)
-            
-            # 在侧边栏添加筛选选项
-            with st.sidebar:
-                # 为每个会议添加研究方向筛选和关键字段筛选
-                for conf in conferences:
-                    st.subheader(conf.upper())
-                    
-                    # 添加研究方向筛选
-                    categories_for_conf = conference_categories.get(conf, {})
-                    if categories_for_conf:
-                        category_options = list(categories_for_conf.keys())
-                        if category_options:
-                            selected_categories = st.multiselect(
-                                f"研究方向:",
-                                options=category_options,
-                                default=[],
-                                help="选择特定的研究方向进行筛选，可多选"
-                            )
-                            # 无论是否选择研究方向，都更新会话状态
-                            if 'conference_categories' not in st.session_state:
-                                st.session_state['conference_categories'] = {}
-                            
-                            # 如果用户取消了所有选择，则从会话状态中移除该会议的研究方向筛选
-                            if not selected_categories and conf in st.session_state['conference_categories']:
-                                del st.session_state['conference_categories'][conf]
-                            # 如果有选择，则更新会话状态
-                            elif selected_categories:
-                                st.session_state['conference_categories'][conf] = selected_categories
-                    
-                    # 添加关键字段筛选
-                    key_fields = load_conference_key_fields(conf)
-                    
-                    for field, values in key_fields.items():
-                        if values:
-                            field_key = f"{conf}_{field}"
-                            selected = st.multiselect(
-                                f"{field.capitalize()}:",
-                                options=values,
-                                default=[],
-                                help=f"选择要筛选的 {field} 值。不选择则显示所有值。",
-                                key=field_key
-                            )
-                            if selected:
-                                if field not in key_fields_filters:
-                                    key_fields_filters[field] = {}
-                                key_fields_filters[field][conf] = selected
-        else:
-            data = None
-            st.session_state['data'] = None
-            source = ""
-    
+        for conf in conferences:
+            conf_data = load_conference_data(conf)
+            if conf_data:
+                conf_data = preprocess_data(conf_data)
+                for paper_item in conf_data:
+                    paper_item['source'] = conf
+                data.extend(conf_data)
+        source = "+".join(conferences)
+
     return data, source, key_fields_filters
 
 
@@ -926,125 +805,161 @@ def logout():
         st.session_state.pop('user')
     st.session_state['page'] = 'search'
 
+def train_and_evaluate_model():
+    """
+    训练和评估模型。
+    """
+    st.subheader("模型训练与评估")
+
+    # 动态配置训练数据文件路径
+    data_file = st.text_input("输入训练数据文件路径,如:key_infos/aaai/aaai2021.json", value="data/train.json")
+    model_path = st.text_input("输入模型保存路径:", value="models/pasa_model")
+
+    if st.button("加载数据"):
+        # 加载数据
+        data = load_json_data(data_file)
+        logger.info(f"加载数据文件: {data_file}, 数据条目数: {len(data)}")
+        if not data:
+            st.error("加载数据失败，文件可能为空或格式不正确")
+            return
+        data = preprocess_data(data)
+        data = extract_features(data)
+        data = augment_data(data)
+        st.info(f"数据预处理、特征提取和增强完成，共 {len(data)} 条记录")
+
+        model = PASAModel(model_path)
+        model.train(data)
+        st.success("模型训练完成")
+
+        metrics = model.evaluate(data)
+        st.write("评估结果:", metrics)
+
 def main():
-	"""主函数"""
-	st.set_page_config(page_title="论文搜索工具", layout="wide")
-	init_db()
+    """主函数"""
+    st.set_page_config(page_title="论文搜索工具", layout="wide")
+    init_db()
 
-	# 初始化页面状态（默认显示搜索页）
-	if 'page' not in st.session_state:
-		st.session_state['page'] = 'search'
+    # 初始化页面状态（默认显示搜索页）
+    if 'page' not in st.session_state:
+        st.session_state['page'] = 'search'
 
-	# 可选：获取当前用户（可能为 None）
-	user = st.session_state.get("user")
+    # 可选：获取当前用户（可能为 None）
+    user = st.session_state.get("user")
 
-	# 顶部布局：右上角显示 登录/注册 或 用户名 + 登出
-	top_cols = st.columns([8, 1, 1])
-	with top_cols[1]:
-		if user:
-			# 显示用户名（不作其他操作）
-			st.button(f"{user.get('username')}", key="user_label_btn")
-		else:
-			st.button("登录/注册", key="top_auth_button", on_click=go_to_auth)
-	with top_cols[2]:
-		if user:
-			st.button("登出", key="logout_btn", on_click=logout)
+    # 顶部布局：右上角显示 登录/注册 或 用户名 + 登出
+    top_cols = st.columns([8, 1, 1])
+    with top_cols[1]:
+        if user:
+            st.button(f"{user.get('username')}", key="user_label_btn")
+        else:
+            st.button("登录/注册", key="top_auth_button", on_click=go_to_auth)
+    with top_cols[2]:
+        if user:
+            st.button("登出", key="logout_btn", on_click=logout)
 
-	# 如果当前页面是认证页面，则显示认证界面并返回
-	if st.session_state.get('page') == 'auth':
-		user_authentication()
-		return
+    # 如果当前页面是认证页面，则显示认证界面并返回
+    if st.session_state.get('page') == 'auth':
+        user_authentication()
+        return
 
-	# 如果用户已登录，显示导航按钮（我的记录；管理员额外显示用户管理与密码重置管理）
-	if user:
-		nav_cols = st.columns([1,1,1])
-		# 我的记录（所有登录用户可见）
-		with nav_cols[0]:
-			st.button("我的记录", key="nav_history", on_click=lambda: go_to_page('history'))
-		# 管理用户（仅管理员）
-		with nav_cols[1]:
-			if user.get("is_admin"):
-				st.button("用户管理", key="nav_manage_users", on_click=lambda: go_to_page('manage_users'))
-		# 密码重置管理（仅管理员）
-		with nav_cols[2]:
-			if user.get("is_admin"):
-				st.button("密码重置申请管理", key="nav_manage_resets", on_click=lambda: go_to_page('manage_resets'))
+    # 如果用户已登录，显示导航按钮（我的记录；管理员额外显示用户管理与密码重置管理）
+    if user:
+        nav_cols = st.columns([1,1,1])
+        # 我的记录（所有登录用户可见）
+        with nav_cols[0]:
+            st.button("我的记录", key="nav_history", on_click=lambda: go_to_page('history'))
+        # 管理用户（仅管理员）
+        with nav_cols[1]:
+            if user.get("is_admin"):
+                st.button("用户管理", key="nav_manage_users", on_click=lambda: go_to_page('manage_users'))
+        # 密码重置管理（仅管理员）
+        with nav_cols[2]:
+            if user.get("is_admin"):
+                st.button("密码重置申请管理", key="nav_manage_resets", on_click=lambda: go_to_page('manage_resets'))
 
-	# 页面路由：根据 page 渲染不同视图
-	page = st.session_state.get('page', 'search')
+    # 页面路由：根据 page 渲染不同视图
+    page = st.session_state.get('page', 'search')
 
-	# 管理页面或记录页面显示时，提供返回搜索的按钮
-	if page in ('manage_users', 'manage_resets', 'history'):
-		if st.button("返回搜索", key="back_to_search"):
-			st.session_state['page'] = 'search'
-			return
+    # 管理页面或记录页面显示时，提供返回搜索的按钮
+    if page in ('manage_users', 'manage_resets', 'history'):
+        if st.button("返回搜索", key="back_to_search"):
+            st.session_state['page'] = 'search'
+            return
 
-	if page == 'manage_users':
-		# 仅管理员可访问
-		if not user or not user.get('is_admin'):
-			st.error("只有管理员可以访问用户管理页面。")
-			return
-		admin_manage_users()
-		return
+    if page == 'manage_users':
+        # 仅管理员可访问
+        if not user or not user.get('is_admin'):
+            st.error("只有管理员可以访问用户管理页面。")
+            return
+        admin_manage_users()
+        return
 
-	if page == 'manage_resets':
-		# 仅管理员可访问
-		if not user or not user.get('is_admin'):
-			st.error("只有管理员可以访问密码重置申请管理页面。")
-			return
-		admin_manage_password_resets()
-		return
+    if page == 'manage_resets':
+        # 仅管理员可访问
+        if not user or not user.get('is_admin'):
+            st.error("只有管理员可以访问密码重置申请管理页面。")
+            return
+        admin_manage_password_resets()
+        return
 
-	if page == 'history':
-		# 仅登录用户可查看自己的记录
-		if not user:
-			st.error("请先登录以查看您的搜索记录。")
-			return
-		view_search_history(user['id'])
-		return
+    if page == 'history':
+        # 仅登录用户可查看自己的记录
+        if not user:
+            st.error("请先登录以查看您的搜索记录。")
+            return
+        view_search_history(user['id'])
+        return
 
-	# 默认：搜索页面（所有用户可访问）
-	# 如果到这里，page 应为 'search'
-	# 搜索功能（所有用户均可访问）
-	search_params = create_search_sidebar()
-	if st.button("搜索论文"):
-		# 保留用户原始输入
-		original_query = search_params.get("keyword", "")
-		search_params["original_keyword"] = original_query
+    # 默认：搜索页面（所有用户可访问）
+    # 如果到这里，page 应为 'search'
+    # 搜索功能（所有用户均可访问）
+    search_params = create_search_sidebar()
+    if st.button("搜索论文"):
+        # 保留用户原始输入
+        original_query = search_params.get("keyword", "")
+        search_params["original_keyword"] = original_query
 
-		# 若启用自然语言解析（文心千帆），先调用生成关键词并扩展检索字段包含全文
-		if search_params.get("use_nl"):
-			baidu_key = search_params.get("baidu_key", "") or os.environ.get("BAIDU_QF_KEY", BAIDU_QF_KEY)
-			with st.spinner("正在使用文心千帆解析自然语言查询..."):
-				nl_keywords = generate_keywords_via_model(original_query, baidu_key)
-			if nl_keywords:
-				st.info(f"系统生成关键词: {nl_keywords}")
-				# 将用于后端检索的 keyword 字段设为模型生成的英文关键词
-				search_params["keyword"] = nl_keywords
-				# 将检索字段扩大到包含全文（如果数据包含此字段）
-				# 优先使用用户选择的 fields_to_search（若未选择则使用 DEFAULT_FIELDS）
-				fields = search_params.get("fields_to_search") or DEFAULT_FIELDS.copy()
-				if "full_text" not in fields:
-					fields = fields + ["full_text"]
-				search_params["fields_to_search"] = fields
-			else:
-				st.warning("未能生成关键词，使用原始输入进行匹配")
-				# 保证检索时包含全文
-				fields = search_params.get("fields_to_search") or DEFAULT_FIELDS.copy()
-				if "full_text" not in fields:
-					fields = fields + ["full_text"]
-				search_params["fields_to_search"] = fields
-		else:
-			# 不使用自然语言解析，保持用户原始输入和选择的字段
-			search_params["keyword"] = original_query
+        # 若启用自然语言解析（文心千帆），先调用生成关键词并扩展检索字段包含全文
+        if search_params.get("use_nl"):
+            baidu_key = search_params.get("baidu_key", "") or os.environ.get("BAIDU_QF_KEY", BAIDU_QF_KEY)
+            with st.spinner("正在使用文心千帆解析自然语言查询..."):
+                nl_keywords = generate_keywords_via_model(original_query, baidu_key)
+            if nl_keywords:
+                st.info(f"系统生成关键词: {nl_keywords}")
+                # 将用于后端检索的 keyword 字段设为模型生成的英文关键词
+                search_params["keyword"] = nl_keywords
+                # 将检索字段扩大到包含全文（如果数据包含此字段）
+                # 优先使用用户选择的 fields_to_search（若未选择则使用 DEFAULT_FIELDS）
+                fields = search_params.get("fields_to_search") or DEFAULT_FIELDS.copy()
+                if "full_text" not in fields:
+                    fields = fields + ["full_text"]
+                search_params["fields_to_search"] = fields
+            else:
+                st.warning("未能生成关键词，使用原始输入进行匹配")
+                # 保证检索时包含全文
+                fields = search_params.get("fields_to_search") or DEFAULT_FIELDS.copy()
+                if "full_text" not in fields:
+                    fields = fields + ["full_text"]
+                search_params["fields_to_search"] = fields
+        else:
+            # 不使用自然语言解析，保持用户原始输入和选择的字段
+            search_params["keyword"] = original_query
 
-		data, source, key_fields_filters = load_data_source(search_params["data_search_mode"])
-		search_params["key_fields_filters"] = key_fields_filters
-		display_search_results(data, source, search_params)
+        data, source, key_fields_filters = load_data_source(search_params["data_search_mode"])
+        search_params["key_fields_filters"] = key_fields_filters
+        display_search_results(data, source, search_params)
 
-		# 仅在用户已登录时保存搜索历史
-		if user:
-			save_search_history(user["id"], search_params)
+        # 仅在用户已登录时保存搜索历史
+        if user:
+            save_search_history(user["id"], search_params)
+
+    # 添加训练与评估按钮
+    if user and user.get("is_admin"):
+        if st.button("模型训练与评估", key="train_button"):
+            st.session_state['page'] = 'train'
+
+    if page == 'train':
+        train_and_evaluate_model()
 
 # 添加主入口，确保可直接运行
 if __name__ == "__main__":
