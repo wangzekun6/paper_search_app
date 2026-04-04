@@ -1,0 +1,13 @@
+# Python cache files
+__pycache__/
+*.pyc
+
+# Local Streamlit runtime logs
+tools/streamlit_stdout.log
+tools/streamlit_stderr.log
+
+# Large local database artifact that exceeds GitHub single-file limits
+day2_outputs/day2_full.db
+
+# Local full dataset; keep out of GitHub to avoid oversized pushes
+data/

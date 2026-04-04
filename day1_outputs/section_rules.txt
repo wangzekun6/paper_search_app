@@ -1,0 +1,19 @@
+Day 1 section 归类规则
+
+规则
+- 标题包含 introduction、background -> intro
+- 标题包含 method、methods、approach、framework -> methods
+- 标题包含 result、results、experiment、experiments、evaluation -> results
+- 标题包含 discussion、conclusion、conclusions、analysis -> discussion
+- 其他全部 -> other
+
+实现约束
+- 只做英文关键词规则，不做复杂变体扩展。
+- subsections 会被扁平化，标题保存为“父标题 > 子标题”。
+- 归类时对完整标题路径做匹配，因此像“Experiments and Analysis > Deferral”会优先落到 results。
+- 无法归类时统一返回 other，不为个别异常标题引入额外复杂性。
+
+Day 1 固定结论
+- references 不进入主检索文本。
+- appendices 不作为主召回字段。
+- 主检索只围绕 title、authors、abstract、sections。

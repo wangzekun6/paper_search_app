@@ -1,0 +1,32 @@
+
+Day 3 执行完成
+
+执行范围
+- 数据库文件: C:\Users\czk30\Desktop\bishe2\PaperCompass-main\day2_outputs\day2_full.db
+- OpenAI 模型默认值: qwen-plus
+- OpenAI 连通状态: True
+- OpenAI 连通说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK
+- 生成卡片总数: 100
+- pilot 试跑卡片数: 5
+- 质量检查样本数: 20
+- 卡片状态分布: {'generated': 93, 'generated_fallback': 7}
+
+已完成目标
+- 已固定 PaperSemanticCard schema。
+- 已固定 LLM Prompt，并保存到 paper_semantic_card_prompt.md。
+- 已至少生成 100 条语义卡片并写入 paper_semantic_cards。
+- 已实现卡片缓存策略，并写入 card_cache_strategy.txt。
+- 已生成质量检查表和字段稳定性报告。
+
+重点字段稳定性
+- stable_fields: domain_tags, task_tags, method_tags, paper_type, core_contributions, likely_user_intents
+- drift_risk_fields: 
+
+交付物
+- paper_semantic_card_prompt.md
+- pilot_semantic_cards.json
+- semantic_cards_sample_100.json
+- semantic_card_quality_check.csv
+- semantic_card_quality_check.json
+- semantic_card_field_stability.json
+- card_cache_strategy.txt
