@@ -6,6 +6,25 @@
 ../data/arxiv_202502_cs_cl/
 ```
 
+If the extracted dataset folder is missing, the build entrypoints will
+automatically restore it from the local tar archive first:
+
+```text
+../bundled_data/arxiv_202502_cs_cl.tar
+```
+
+Optional local full gzip archive:
+
+```text
+../bundled_data/arxiv_202502_cs_cl.tar.gz
+```
+
+If neither local archive exists, the tools will download the release asset from:
+
+```text
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz
+```
+
 ## 主要文件
 
 - `papercompass.py`: 项目级 CLI 入口

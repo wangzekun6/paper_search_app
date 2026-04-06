@@ -33,7 +33,7 @@ from day1_pipeline import (
     join_blocks,
     truncate,
 )
-from dataset_config import DATASET_DIR, PROJECT_ROOT
+from dataset_config import DATASET_DIR, PROJECT_ROOT, resolve_dataset_root
 
 
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "day2_outputs"
@@ -370,7 +370,7 @@ def build_database(data_root: Path, db_path: Path) -> Dict[str, int]:
     返回值是建库后的核心统计信息，方便命令行和反馈文件直接复用。
     """
 
-    data_root = data_root.resolve()
+    data_root = resolve_dataset_root(data_root)
     paper_paths = sorted(data_root.glob("*.json"))
 
     with initialize_database(db_path) as conn:

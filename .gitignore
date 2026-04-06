@@ -9,5 +9,14 @@ tools/streamlit_stderr.log
 # Large local database artifact that exceeds GitHub single-file limits
 day2_outputs/day2_full.db
 
-# Local full dataset; keep out of GitHub to avoid oversized pushes
+# Extracted dataset restored from the bundled tarball; keep the expanded copy out of Git
 data/
+
+# Local plain tar archive is intentionally ignored because it exceeds GitHub limits.
+bundled_data/*.tar
+bundled_data/arxiv_202502_cs_cl.tar.gz
+bundled_data/*.part*
+
+# Temporary local archive probes
+_tmp_arxiv_202502_cs_cl.zip
+_tmp_arxiv_202502_cs_cl.tar

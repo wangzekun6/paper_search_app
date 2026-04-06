@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from dataset_config import DATASET_DIR, DATASET_LABEL, DATASET_RELATIVE_PATH, PROJECT_ROOT
+from dataset_config import DATASET_DIR, DATASET_LABEL, DATASET_RELATIVE_PATH, PROJECT_ROOT, resolve_dataset_root
 
 
 SEARCH_MODE_AND = "AND"
@@ -79,6 +79,8 @@ def load_data(input_file: str | Sequence[str]) -> Optional[List[Dict[str, Any]]]
     """加载单个 JSON 文件或整个目录下的 JSON 文件，返回统一的记录列表。"""
 
     absolute_path = _resolve_input_path(input_file)
+    if absolute_path.resolve(strict=False) == DATASET_DIR.resolve(strict=False):
+        absolute_path = resolve_dataset_root(DATASET_DIR)
 
     if absolute_path.is_dir():
         records: List[Dict[str, Any]] = []

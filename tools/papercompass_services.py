@@ -16,7 +16,7 @@ import day2_pipeline as day2
 import day3_pipeline as day3
 import papercompass_chain as chain
 import papercompass_intent as intent
-from dataset_config import DATASET_DIR
+from dataset_config import DATASET_DIR, resolve_dataset_root
 
 
 DEFAULT_DATA_ROOT = DATASET_DIR
@@ -146,7 +146,7 @@ def build_project(
     pilot_count: int = DEFAULT_PILOT_COUNT,
     refresh_semantic_cards: bool = False,
 ) -> Dict[str, Any]:
-    data_root_path = Path(data_root)
+    data_root_path = resolve_dataset_root(data_root)
     database_path = Path(db_path)
     query_payload: Optional[Dict[str, Any]] = None
 

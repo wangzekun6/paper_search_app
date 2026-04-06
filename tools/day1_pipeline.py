@@ -27,7 +27,7 @@ from day1_contracts import (
     PaperSemanticCard,
     RawPaperRecord,
 )
-from dataset_config import DATASET_DIR, PROJECT_ROOT
+from dataset_config import DATASET_DIR, PROJECT_ROOT, resolve_dataset_root
 
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -663,7 +663,7 @@ def initialize_database(
 
 def main() -> None:
     args = parse_args()
-    data_root = args.data_root.resolve()
+    data_root = resolve_dataset_root(args.data_root)
     output_dir = args.output_dir.resolve()
     ensure_output_dir(output_dir)
 

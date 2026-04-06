@@ -22,7 +22,29 @@ PaperCompass 是一个面向本地 `arXiv 2025-02 cs.CL` 数据集的完整论�
 data/arxiv_202502_cs_cl/
 ```
 
-该目录下存放逐篇论文 JSON 文件。
+运行时仍然从该目录读取逐篇论文 JSON 文件。
+
+GitHub 上随项目一起发布的数据集压缩包位于 Release `dataset-20260407` 中：
+
+```text
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz
+```
+
+本地如需保留未压缩的 tar 包，也可以额外放置：
+
+```text
+bundled_data/arxiv_202502_cs_cl.tar
+```
+
+本地如果手动准备了完整 gzip 归档，也仍然支持：
+
+```text
+bundled_data/arxiv_202502_cs_cl.tar.gz
+```
+
+当 `data/arxiv_202502_cs_cl/` 不存在时，`papercompass.py build`、`day1_pipeline.py`、
+`day2_pipeline.py` 和旧版 `extract.py` 会优先从本地 `.tar` 恢复；若不存在，再尝试本地完整 `.tar.gz`；
+若也不存在，则自动从 GitHub Release 下载 `arxiv_202502_cs_cl.tar.gz` 并解包恢复。
 
 ## 本地运行
 
@@ -60,8 +82,11 @@ python papercompass.py chain-build
 
 ```text
 PaperCompass-main/
+├── bundled_data/
+│   ├── arxiv_202502_cs_cl.tar.gz        # 可选的本地完整 gzip 归档，不纳入 Git
+│   └── arxiv_202502_cs_cl.tar           # 可选的本地 tar 归档，不纳入 Git
 ├── data/
-│   └── arxiv_202502_cs_cl/     # 当前主数据集
+│   └── arxiv_202502_cs_cl/     # 运行时自动解包生成的数据目录
 ├── day1_outputs/               # Day 1 产物与样例数据库
 ├── day2_outputs/               # Day 2 全量数据库与 query 调试产物
 ├── day3_outputs/               # Day 3 Prompt、语义卡片样例、质量检查与缓存策略
@@ -84,7 +109,8 @@ PaperCompass-main/
 ## 说明
 
 - 旧的会议目录数据已经移除，不再作为默认读取源。
-- 当前所有默认读取路径都已经切换到 `data/arxiv_202502_cs_cl`。
+- 当前默认读取路径仍是 `data/arxiv_202502_cs_cl`，但当该目录缺失时会优先从本地 `bundled_data/arxiv_202502_cs_cl.tar` 恢复，没有该文件时再尝试本地 `bundled_data/arxiv_202502_cs_cl.tar.gz`，最后回退到 GitHub Release 资源下载。
+- 首次仅依赖 GitHub Release 恢复数据时需要联网；下载完成后会把 `bundled_data/arxiv_202502_cs_cl.tar.gz` 缓存在本地。
 - 默认项目数据库输出为 `day2_outputs/day2_full.db`。
 - 语义卡片默认写回同一个 SQLite 库的 `paper_semantic_cards` 表，并在 `day3_outputs/` 输出 Prompt、质量检查和缓存策略文件。
 - 后续新增功能应优先接入 `papercompass.py` 和 `papercompass_services.py`，避免直接把产品层耦合到某个 day 文件。
