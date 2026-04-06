@@ -24,10 +24,13 @@ data/arxiv_202502_cs_cl/
 
 运行时仍然从该目录读取逐篇论文 JSON 文件。
 
-GitHub 上随项目一起发布的数据集压缩包位于 Release `dataset-20260407` 中：
+GitHub 上随项目一起发布的数据集分片位于 Release `dataset-20260407` 中：
 
 ```text
-https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part01
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part02
+...
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.partNN
 ```
 
 本地如需保留未压缩的 tar 包，也可以额外放置：
@@ -44,7 +47,7 @@ bundled_data/arxiv_202502_cs_cl.tar.gz
 
 当 `data/arxiv_202502_cs_cl/` 不存在时，`papercompass.py build`、`day1_pipeline.py`、
 `day2_pipeline.py` 和旧版 `extract.py` 会优先从本地 `.tar` 恢复；若不存在，再尝试本地完整 `.tar.gz`；
-若也不存在，则自动从 GitHub Release 下载 `arxiv_202502_cs_cl.tar.gz` 并解包恢复。
+若也不存在，则自动从 GitHub Release 下载 `arxiv_202502_cs_cl.tar.gz.partNN` 分片、拼接并解包恢复。
 
 ## 本地运行
 
@@ -110,7 +113,7 @@ PaperCompass-main/
 
 - 旧的会议目录数据已经移除，不再作为默认读取源。
 - 当前默认读取路径仍是 `data/arxiv_202502_cs_cl`，但当该目录缺失时会优先从本地 `bundled_data/arxiv_202502_cs_cl.tar` 恢复，没有该文件时再尝试本地 `bundled_data/arxiv_202502_cs_cl.tar.gz`，最后回退到 GitHub Release 资源下载。
-- 首次仅依赖 GitHub Release 恢复数据时需要联网；下载完成后会把 `bundled_data/arxiv_202502_cs_cl.tar.gz` 缓存在本地。
+- 首次仅依赖 GitHub Release 恢复数据时需要联网；下载完成后会把 `bundled_data/arxiv_202502_cs_cl.tar.gz.partNN` 分片缓存在本地。
 - 默认项目数据库输出为 `day2_outputs/day2_full.db`。
 - 语义卡片默认写回同一个 SQLite 库的 `paper_semantic_cards` 表，并在 `day3_outputs/` 输出 Prompt、质量检查和缓存策略文件。
 - 后续新增功能应优先接入 `papercompass.py` 和 `papercompass_services.py`，避免直接把产品层耦合到某个 day 文件。

@@ -22,7 +22,10 @@ Optional local full gzip archive:
 If neither local archive exists, the tools will download the release asset from:
 
 ```text
-https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part01
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part02
+...
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.partNN
 ```
 
 ## 主要文件
