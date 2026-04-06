@@ -1,0 +1,349 @@
+[
+  {
+    "query": "我想看 RAG",
+    "follow_up_reply": "最近两年，综述优先，最好解释为什么推荐",
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.problem",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_diverse"
+      ],
+      "evidence_gap": [],
+      "matched_dimensions": [
+        "topic_match",
+        "constraint_match",
+        "paper_type_match"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.problem、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality、document_attributes.author_name"
+      ]
+    }
+  },
+  {
+    "query": "帮我找 LLM agent 的论文",
+    "follow_up_reply": "最近两年，综述优先，方法不限",
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [],
+      "matched_dimensions": [
+        "topic_match",
+        "constraint_match",
+        "paper_type_match"
+      ],
+      "ambiguous_dimensions": [
+        "technical_constraints.method"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、research_topic.problem、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality"
+      ]
+    }
+  },
+  {
+    "query": "找机器翻译论文",
+    "follow_up_reply": "作者不限，最好近三年，用 COMET 或者质量估计相关",
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.modality",
+        "document_attributes.paper_type",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "matched_dimensions": [
+        "constraint_match"
+      ],
+      "ambiguous_dimensions": [
+        "document_attributes.author_name"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、research_topic.problem、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.modality"
+      ]
+    }
+  },
+  {
+    "query": "papers by authors of MALT",
+    "follow_up_reply": "方法不限，解释一下为什么这些结果相关",
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.time_range",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "matched_dimensions": [
+        "paper_type_match"
+      ],
+      "ambiguous_dimensions": [
+        "technical_constraints.method"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、research_topic.problem、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric"
+      ]
+    }
+  },
+  {
+    "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.problem",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.time_range",
+        "document_attributes.author_name",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [],
+      "matched_dimensions": [
+        "topic_match",
+        "constraint_match",
+        "paper_type_match"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.problem、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality、document_attributes.time_range、document_attributes.author_name"
+      ]
+    }
+  },
+  {
+    "query": "Looking for survey papers on long context in LLMs",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "technical_constraints.method",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "document_attributes.time_range",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "matched_dimensions": [
+        "constraint_match",
+        "paper_type_match"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、technical_constraints.method、technical_constraints.dataset、technical_constraints.metric、document_attributes.time_range、document_attributes.author_name"
+      ]
+    }
+  },
+  {
+    "query": "找用 COMET 做 machine translation quality estimation 的论文",
+    "follow_up_reply": "最近的优先，数据集不限",
+    "intent_gap_report": {
+      "query_gap": [
+        "technical_constraints.model_family",
+        "technical_constraints.modality",
+        "document_attributes.paper_type",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [],
+      "matched_dimensions": [
+        "topic_match",
+        "constraint_match"
+      ],
+      "ambiguous_dimensions": [
+        "technical_constraints.dataset"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：technical_constraints.model_family、technical_constraints.modality、document_attributes.paper_type、document_attributes.author_name、document_attributes.title_hint、result_preferences.prefer_classic"
+      ]
+    }
+  },
+  {
+    "query": "给我多样一些的 agent evaluation papers，并解释为什么推荐",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "research_topic.problem",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.time_range",
+        "document_attributes.paper_type",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "top-K 对方法 / 模型 / 数据集等技术约束的覆盖还不够稳定。"
+      ],
+      "matched_dimensions": [],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "top-K 对方法 / 模型 / 数据集等技术约束的覆盖还不够稳定。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.problem、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality"
+      ]
+    }
+  },
+  {
+    "query": "找 multimodal reasoning papers",
+    "follow_up_reply": "数据集不限，最好结果多样一些",
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.problem",
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.metric",
+        "document_attributes.time_range",
+        "document_attributes.paper_type",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "matched_dimensions": [
+        "constraint_match"
+      ],
+      "ambiguous_dimensions": [
+        "technical_constraints.dataset"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.problem、technical_constraints.method、technical_constraints.model_family、technical_constraints.metric、document_attributes.time_range、document_attributes.paper_type"
+      ]
+    }
+  },
+  {
+    "query": "我想看用 early exit 做质量估计的论文",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.time_range",
+        "document_attributes.paper_type",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "matched_dimensions": [
+        "constraint_match"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、research_topic.problem、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric"
+      ]
+    }
+  }
+]

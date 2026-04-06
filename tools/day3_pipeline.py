@@ -952,6 +952,7 @@ Model Default: {OPENAI_MODEL}
 
 
 def write_feedback(
+    db_path: Path,
     generated_count: int,
     pilot_cards: Sequence[Dict[str, Any]],
     quality_payload: Dict[str, Any],
@@ -964,7 +965,7 @@ def write_feedback(
 Day 3 执行完成
 
 执行范围
-- 数据库文件: {DEFAULT_DB_PATH}
+- 数据库文件: {db_path}
 - OpenAI 模型默认值: {OPENAI_MODEL}
 - OpenAI 连通状态: {openai_available}
 - OpenAI 连通说明: {openai_message}
@@ -1032,6 +1033,7 @@ def run_build_command(args: argparse.Namespace) -> None:
         }
         write_cache_strategy()
         write_feedback(
+            args.db_path,
             generated_count,
             pilot_cards,
             quality_payload,

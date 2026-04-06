@@ -2,14 +2,14 @@
 Day 3 执行完成
 
 执行范围
-- 数据库文件: C:\Users\czk30\Desktop\bishe2\PaperCompass-main\day2_outputs\day2_full.db
+- 数据库文件: day2_outputs\day2_full.db
 - OpenAI 模型默认值: qwen-plus
 - OpenAI 连通状态: True
 - OpenAI 连通说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK
 - 生成卡片总数: 100
 - pilot 试跑卡片数: 5
 - 质量检查样本数: 20
-- 卡片状态分布: {'generated': 93, 'generated_fallback': 7}
+- 卡片状态分布: {'generated': 100}
 
 已完成目标
 - 已固定 PaperSemanticCard schema。

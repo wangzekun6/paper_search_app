@@ -3,35 +3,41 @@
     "paper_id": "2502.06872",
     "domain_tags": [
       "Natural Language Processing",
-      "Responsible AI",
       "Trustworthy AI",
+      "Responsible AI",
       "Large Language Models"
     ],
     "task_tags": [
       "Question Answering",
       "Chatbot Systems",
-      "Domain-Specific NLP Applications"
+      "Domain-Specific NLP",
+      "AI Safety Evaluation"
     ],
-    "problem_statement": "Despite RAG's success in reducing hallucinations and enabling up-to-date knowledge integration, it introduces new risks—robustness issues, privacy leaks, adversarial vulnerabilities, fairness biases, lack of explainability, and accountability gaps—that threaten real-world deployment.",
+    "problem_statement": "Despite RAG’s success in reducing hallucinations and enabling up-to-date knowledge integration, emerging risks—including robustness failures, privacy leakage, adversarial attacks, and accountability gaps—threaten its real-world trustworthiness, and no unified framework exists to systematically address them.",
     "method_tags": [
-      "RAG trustworthiness framework",
-      "Taxonomy-driven analysis",
-      "Cross-dimension evaluation synthesis"
+      "Retrieval-Augmented Generation",
+      "Trustworthiness Assessment",
+      "Taxonomy Design",
+      "Survey Methodology"
     ],
     "model_tags": [
-      "Retrieval-Augmented Generation (RAG)"
+      "Large Language Models",
+      "RAG Systems"
     ],
     "dataset_tags": [],
     "metric_tags": [
-      "Trustworthiness evaluation metrics",
-      "RAG robustness benchmarks",
-      "Privacy leakage detection metrics"
+      "Uncertainty Evaluation",
+      "Privacy Leakage Metrics",
+      "Safety Benchmarking",
+      "Fairness Auditing",
+      "Explainability Scoring",
+      "Accountability Tracing"
     ],
     "paper_type": "survey",
     "core_contributions": [
-      "Proposes a unified six-dimensional framework (reliability, privacy, safety, fairness, explainability, accountability) for evaluating and improving trustworthiness in RAG systems",
-      "Introduces structured taxonomies and evaluation protocols for each trustworthiness dimension, enabling systematic comparison of methods",
-      "Identifies critical open challenges and synergistic research directions across trustworthiness dimensions, serving as a community roadmap"
+      "Proposes a unified six-dimensional framework (reliability, privacy, safety, fairness, explainability, accountability) for analyzing trustworthiness in RAG systems",
+      "Provides structured taxonomies and evaluation protocols for each trustworthiness dimension, synthesizing over 200 works",
+      "Identifies cross-cutting research gaps and future directions, including synergies across dimensions and domain-specific deployment challenges"
     ],
     "application_scenarios": [
       "AI-assisted healthcare decision support",
@@ -44,26 +50,22 @@
       "RAG survey",
       "RAG reliability",
       "RAG privacy",
-      "RAG safety",
       "RAG fairness",
-      "RAG explainability",
-      "RAG accountability"
+      "RAG explainability"
     ],
     "retrieval_keywords_zh": [
       "可信RAG",
       "RAG综述",
       "RAG可靠性",
-      "RAG隐私",
-      "RAG安全性",
+      "RAG隐私保护",
       "RAG公平性",
-      "RAG可解释性",
-      "RAG问责制"
+      "RAG可解释性"
     ],
     "survey_signals": [
       "comprehensive taxonomy",
-      "cross-dimension framework",
+      "cross-dimension synthesis",
       "evaluation protocol summary",
-      "future research roadmap"
+      "future directions per dimension"
     ],
     "likely_user_intents": [
       "survey_lookup",
@@ -71,7 +73,7 @@
       "recent_progress",
       "specific_paper_lookup"
     ],
-    "limitations_or_scope": "Focuses on trustworthiness dimensions of RAG; does not propose novel algorithms or datasets, but synthesizes and structures existing work.",
+    "limitations_or_scope": "Focuses on conceptual organization and literature synthesis; does not propose or evaluate novel algorithms or datasets.",
     "evidence_spans": [
       {
         "target_field": "core_contributions",
@@ -81,35 +83,35 @@
       },
       {
         "target_field": "core_contributions",
-        "claim_value": "structured taxonomies and evaluation protocols",
+        "claim_value": "structured taxonomies and evaluation protocols for each trustworthiness dimension",
         "source_section": "abstract",
         "evidence_text": "For each perspective, we present a general framework and taxonomy, offering a structured approach to understanding the current challenges, evaluating existing solutions, and identifying promising future research directions."
       },
       {
         "target_field": "core_contributions",
-        "claim_value": "community roadmap",
+        "claim_value": "identifies cross-cutting research gaps and future directions",
         "source_section": "Discussion",
-        "evidence_text": "This survey not only serves as a comprehensive roadmap for researchers aiming to advance trustworthy RAG systems..."
+        "evidence_text": "Finally, we provide an in-depth discussion of future research directions for each aspect of trustworthiness, including promising directions within individual aspects and potential synergies across multiple areas."
       }
     ]
   },
   {
     "paper_id": "2502.01113",
     "domain_tags": [
-      "retrieval augmented generation",
-      "knowledge graphs",
-      "graph neural networks"
+      "retrieval-augmented generation",
+      "graph neural networks",
+      "knowledge graphs"
     ],
     "task_tags": [
-      "retrieval",
-      "question answering",
-      "knowledge integration"
+      "retrieval augmented generation",
+      "multi-hop question answering",
+      "knowledge graph reasoning"
     ],
-    "problem_statement": "Conventional RAG fails to capture complex inter-knowledge relationships; GraphRAG suffers from graph noise and incompleteness.",
+    "problem_statement": "Conventional RAG struggles with multi-source knowledge integration; GraphRAG is limited by noisy and incomplete graph structures.",
     "method_tags": [
       "graph foundation model",
       "graph neural network",
-      "zero-shot retrieval"
+      "two-stage training"
     ],
     "model_tags": [
       "GFM-RAG",
@@ -121,14 +123,14 @@
     ],
     "metric_tags": [
       "state-of-the-art performance",
-      "efficiency",
+      "zero-shot generalization",
       "neural scaling law alignment"
     ],
     "paper_type": "method",
     "core_contributions": [
-      "Introduces GFM-RAG, the first graph foundation model for RAG that generalizes to unseen datasets without fine-tuning",
-      "Proposes a novel graph neural network architecture that explicitly reasons over graph structure to model query-knowledge relationships",
-      "Trains an 8M-parameter GFM on large-scale heterogeneous data (60 KGs, 14M triples, 700k documents), enabling strong zero-shot retrieval"
+      "Introduces GFM-RAG, the first graph foundation model (GFM) tailored for retrieval-augmented generation",
+      "Proposes a novel graph neural network architecture that reasons over graph structure to capture query-knowledge relationships",
+      "Demonstrates zero-shot generalization to unseen datasets without fine-tuning, enabled by two-stage training on large-scale knowledge graphs and documents"
     ],
     "application_scenarios": [
       "multi-hop question answering",
@@ -138,23 +140,23 @@
     "retrieval_keywords_en": [
       "graph RAG",
       "graph foundation model",
-      "zero-shot knowledge retrieval",
-      "multi-hop QA"
+      "multi-hop QA RAG",
+      "zero-shot graph retrieval"
     ],
     "retrieval_keywords_zh": [
       "图增强RAG",
       "图基础模型",
-      "零样本知识检索",
-      "多跳问答"
+      "多跳问答RAG",
+      "零样本图检索"
     ],
     "survey_signals": [],
     "likely_user_intents": [
+      "topic_exploration",
       "recent_progress",
       "method_constrained_search",
-      "topic_exploration",
       "specific_paper_lookup"
     ],
-    "limitations_or_scope": "Focuses on graph-structured knowledge integration in RAG; does not address multimodal or temporal graph extensions.",
+    "limitations_or_scope": "Focuses on graph-structured knowledge integration in RAG; does not address unstructured or multimodal retrieval settings.",
     "evidence_spans": [
       {
         "target_field": "core_contributions",
@@ -169,10 +171,10 @@
         "evidence_text": "GFM-RAG is powered by an innovative graph neural network that reasons over graph structure to capture complex query-knowledge relationships"
       },
       {
-        "target_field": "core_contributions",
+        "target_field": "dataset_tags",
         "claim_value": "Trained on 60 knowledge graphs with over 14M triples and 700k documents",
         "source_section": "abstract",
-        "evidence_text": "comprising 60 knowledge graphs with over 14M triples and 700k documents"
+        "evidence_text": "The GFM with 8M parameters undergoes a two-stage training process on large-scale datasets, comprising 60 knowledge graphs with over 14M triples and 700k documents"
       }
     ]
   },
@@ -184,47 +186,50 @@
       "large_language_models"
     ],
     "task_tags": [
-      "open_domain_qa",
+      "multi_hop_qa",
       "fact_retrieval",
-      "contextualized_generation"
+      "context_aware_generation"
     ],
     "problem_statement": "Semantic-only RAG retrieves isolated, redundant chunks lacking intrinsic relationships, limiting LLM reasoning and response coherence.",
     "method_tags": [
-      "KG-guided_retrieval",
-      "chunk_expansion",
-      "context_organization"
+      "knowledge_graph_enhanced_retrieval",
+      "graph_guided_expansion",
+      "structured_context_organization"
     ],
     "model_tags": [
       "Llama-3"
     ],
     "dataset_tags": [
       "HotpotQA",
-      "Wikipedia"
+      "Wikipedia-derived_corpus"
     ],
     "metric_tags": [
       "response_quality",
-      "retrieval_quality"
+      "retrieval_quality",
+      "hallucination_reduction"
     ],
     "paper_type": "method",
     "core_contributions": [
-      "Introduces KG2RAG: a novel RAG framework that leverages knowledge graphs to model fact-level relationships among retrieved chunks.",
+      "Introduces KG2RAG: a novel RAG framework that leverages knowledge graphs to model fact-level relationships among retrieved text chunks.",
       "Proposes KG-guided chunk expansion to diversify and enrich retrieval results beyond semantic similarity.",
       "Designs KG-based context organization to structure retrieved chunks into coherent, paragraph-level inputs for LLMs."
     ],
     "application_scenarios": [
       "question_answering",
       "hallucination_mitigation",
-      "knowledge_intensive_qa"
+      "knowledge_intensive_generation"
     ],
     "retrieval_keywords_en": [
       "RAG knowledge graph",
       "KG-guided retrieval",
-      "chunk expansion RAG"
+      "chunk expansion RAG",
+      "structured RAG context"
     ],
     "retrieval_keywords_zh": [
       "知识图谱增强RAG",
       "KG引导检索",
-      "块扩展"
+      "检索块扩展",
+      "结构化上下文RAG"
     ],
     "survey_signals": [],
     "likely_user_intents": [
@@ -233,7 +238,7 @@
       "method_constrained_search",
       "specific_paper_lookup"
     ],
-    "limitations_or_scope": "Limited to structured KG construction from Wikipedia-style documents; manual prompting used for triplet extraction; long-tail distribution of KG triplets per chunk may affect coverage.",
+    "limitations_or_scope": "Evaluation limited to HotpotQA variants; KG construction relies on manual prompting of Llama-3; long-tail distribution of KG triplets per chunk may affect coverage.",
     "evidence_spans": [
       {
         "target_field": "core_contributions",
@@ -251,7 +256,7 @@
         "target_field": "dataset_tags",
         "claim_value": "Evaluated on HotpotQA-Dist and HotpotQA-Full",
         "source_section": "Results",
-        "evidence_text": "We conduct experiments on the benchmark dataset HotpotQA Yang et al. (2018)... HotpotQA-Dist and HotpotQA-Full"
+        "evidence_text": "We conduct experiments on the benchmark dataset HotpotQA Yang et al. (2018)... In the distractor setting... In the fullwiki setting..."
       }
     ]
   },
@@ -265,9 +270,9 @@
     "task_tags": [
       "question answering",
       "multi-hop reasoning",
-      "information integration"
+      "fact composition"
     ],
-    "problem_statement": "LLMs struggle with robust multi-hop reasoning over very long contexts—even with large context windows—due to scattered evidence and lack of explicit retrieval-integration mechanisms.",
+    "problem_statement": "LLMs struggle with robust multi-hop reasoning over very long contexts when key facts are scattered—even with large context windows—due to lack of explicit retrieval and integration mechanisms.",
     "method_tags": [
       "prompt-based RAG emulation",
       "relevance tagging",
@@ -340,32 +345,30 @@
       "natural_language_processing"
     ],
     "task_tags": [
-      "retrieval",
-      "re-ranking",
+      "document_retrieval",
+      "answer_re_ranking",
       "retrieval_augmented_generation"
     ],
-    "problem_statement": "Fragmented tooling and lack of standardized, flexible frameworks hinder consistent comparison and benchmarking of retrieval, re-ranking, and RAG methods.",
+    "problem_statement": "Fragmented, non-unified tooling for retrieval, re-ranking, and RAG hinders reproducible comparison, fine-grained experimentation, and consistent benchmarking.",
     "method_tags": [
-      "retrieval",
-      "re-ranking",
-      "RAG",
-      "BM25",
-      "DPR",
-      "ColBERT",
-      "BGE",
-      "Contriever"
+      "sparse_retrieval",
+      "dense_retrieval",
+      "hybrid_retrieval",
+      "neural_re_ranking",
+      "RAG"
     ],
     "model_tags": [
+      "BM25",
       "DPR",
       "BPR",
       "ColBERT",
       "BGE",
       "Contriever",
-      "ANCE",
-      "RankLLM"
+      "ANCE"
     ],
     "dataset_tags": [
-      "reranking-datasets-light"
+      "reranking-datasets-light",
+      "BEIR"
     ],
     "metric_tags": [
       "Top-k_accuracy",
@@ -376,9 +379,9 @@
     ],
     "paper_type": "method",
     "core_contributions": [
-      "Introduces Rankify, a unified open-source Python toolkit for retrieval, re-ranking, and RAG",
-      "Provides modular support for diverse retrievers (sparse/dense/hybrid), state-of-the-art re-rankers, and RAG pipelines",
-      "Includes pre-retrieved benchmark datasets and built-in evaluation metrics (Top-k accuracy, EM, recall, precision, containment)"
+      "Introduces Rankify, a unified, modular, open-source Python toolkit for retrieval, re-ranking, and RAG",
+      "Provides prebuilt retrieval corpora, indexes, and benchmark datasets (e.g., Hugging Face reranking-datasets-light)",
+      "Supports diverse retrievers (sparse/dense/hybrid), state-of-the-art re-rankers, and end-to-end RAG pipelines with standardized evaluation"
     ],
     "application_scenarios": [
       "information_retrieval",
@@ -394,8 +397,8 @@
     "retrieval_keywords_zh": [
       "检索工具包",
       "重排序库",
-      "RAG框架",
-      "Python信息检索"
+      "检索增强生成框架",
+      "Python信息检索工具"
     ],
     "survey_signals": [],
     "likely_user_intents": [
@@ -404,25 +407,31 @@
       "method_constrained_search",
       "specific_paper_lookup"
     ],
-    "limitations_or_scope": "Focuses on modularity and ease of use; does not introduce novel retrieval/re-ranking algorithms or theoretical advances.",
+    "limitations_or_scope": "Focuses on unifying existing methods rather than proposing novel retrieval/re-ranking algorithms; evaluation currently emphasizes Top-k accuracy and EM/recall/precision/containment, with MAP/NDCG planned for future versions.",
     "evidence_spans": [
       {
         "target_field": "core_contributions",
-        "claim_value": "Rankify is a unified open-source Python toolkit for retrieval, re-ranking, and RAG",
+        "claim_value": "Rankify is a unified, modular, open-source Python toolkit",
         "source_section": "abstract",
         "evidence_text": "we introduce Rankify, a powerful and modular open-source toolkit designed to unify retrieval, re-ranking, and RAG within a cohesive framework"
       },
       {
         "target_field": "core_contributions",
-        "claim_value": "Supports sparse, dense, and hybrid retrievers and state-of-the-art re-rankers",
+        "claim_value": "Provides prebuilt retrieval corpora, indexes, and benchmark datasets",
+        "source_section": "abstract",
+        "evidence_text": "Rankify includes a collection of pre-retrieved datasets to facilitate benchmarking, available at Huggingface"
+      },
+      {
+        "target_field": "core_contributions",
+        "claim_value": "Supports diverse retrievers and re-rankers",
         "source_section": "abstract",
         "evidence_text": "Rankify supports a wide range of retrieval techniques, including dense and sparse retrievers, while incorporating state-of-the-art re-ranking models"
       },
       {
-        "target_field": "core_contributions",
-        "claim_value": "Includes pre-retrieved datasets and built-in evaluation metrics",
-        "source_section": "abstract",
-        "evidence_text": "Rankify includes a collection of pre-retrieved datasets to facilitate benchmarking... Rankify provides evaluation metrics for retrieval, re-ranking, and retrieval-augmented generation (RAG)"
+        "target_field": "dataset_tags",
+        "claim_value": "Future work includes expanding dataset coverage to include BEIR",
+        "source_section": "Discussion",
+        "evidence_text": "Future work will focus on ... expanding dataset coverage to include BEIR for broader benchmarking"
       }
     ]
   }

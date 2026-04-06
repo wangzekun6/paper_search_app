@@ -28,23 +28,68 @@ DEFAULT_OPENAI_API_KEY = ""
 DEFAULT_OPENAI_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_OPENAI_MODEL_CANDIDATES = ["qwen-plus", "qwen-max", "qwen-turbo"]
 
-# 同时兼容 OpenAI 风格环境变量和 DashScope 自己的命名，
-# 这样上层代码只依赖这一层，不需要关心底层到底接的是哪家服务。
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("DASHSCOPE_API_KEY", DEFAULT_OPENAI_API_KEY)
-OPENAI_API_BASE = (
-    os.environ.get("OPENAI_API_BASE")
-    or os.environ.get("DASHSCOPE_API_BASE")
-    or DEFAULT_OPENAI_API_BASE
-).rstrip("/")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL") or os.environ.get(
-    "DASHSCOPE_MODEL",
-    DEFAULT_OPENAI_MODEL_CANDIDATES[0],
-)
 REQUEST_PROXIES: Optional[Dict[str, str]] = None
 
 
 class OpenAIAPIError(RuntimeError):
     pass
+
+
+def _read_windows_env(name: str) -> str:
+    if os.name != "nt" or winreg is None:
+        return ""
+
+    locations = (
+        (winreg.HKEY_CURRENT_USER, r"Environment"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+    )
+    for root, path in locations:
+        try:
+            with winreg.OpenKey(root, path) as key:
+                value, _ = winreg.QueryValueEx(key, name)
+        except OSError:
+            continue
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def read_env_value(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value and value.strip():
+            return value.strip()
+
+    for name in names:
+        value = _read_windows_env(name)
+        if value:
+            return value
+
+    return default
+
+
+# Prefer the current process environment, but also fall back to Windows
+# user/machine variables so newly configured keys work without restarting.
+OPENAI_API_KEY = read_env_value(
+    "OPENAI_API_KEY",
+    "DASHSCOPE_API_KEY",
+    default=DEFAULT_OPENAI_API_KEY,
+)
+OPENAI_API_BASE = read_env_value(
+    "OPENAI_API_BASE",
+    "OPENAI_BASE_URL",
+    "DASHSCOPE_API_BASE",
+    "DASHSCOPE_BASE_URL",
+    default=DEFAULT_OPENAI_API_BASE,
+).rstrip("/")
+OPENAI_MODEL = read_env_value(
+    "OPENAI_MODEL",
+    "DASHSCOPE_MODEL",
+    default=DEFAULT_OPENAI_MODEL_CANDIDATES[0],
+)
 
 
 def _normalize_proxy_url(value: str) -> str:
