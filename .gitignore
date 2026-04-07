@@ -7,8 +7,7 @@ tools/streamlit_stdout.log
 tools/streamlit_stderr.log
 
 # Large local database artifact that exceeds GitHub single-file limits
-system_outputs/runtime/
-system_outputs/cache/
+day2_outputs/day2_full.db
 
 # Extracted dataset restored from the bundled tarball; keep the expanded copy out of Git
 data/
@@ -21,6 +20,3 @@ bundled_data/*.part*
 # Temporary local archive probes
 _tmp_arxiv_202502_cs_cl.zip
 _tmp_arxiv_202502_cs_cl.tar
-
-# Legacy archive DB snapshot is too large for GitHub regular pushes
-archive/legacy_retrieval_assets/retrieval_reference.db

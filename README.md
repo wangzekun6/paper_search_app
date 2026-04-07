@@ -1,186 +1,119 @@
-# PaperCompass（小白可用版）
+# PaperCompass
 
-PaperCompass 是一个“自然语言找论文”系统。  
-你输入一句话，它会自动做意图解析、检索、重排，并返回可解释的推荐结果。
+PaperCompass 是一个面向本地 `arXiv 2025-02 cs.CL` 数据集的完整论文检索项目。
+项目内部保留了 `day1 / day2 / day3` 文件作为实现演进痕迹，但对外应按一个统一系统来理解和扩展。
 
-如果你是第一次接触这个项目，按下面“5 分钟快速开始”做就行。
+## 当前功能
 
-## 你能用它做什么
+- 统一项目索引构建：原始论文 JSON、论文索引字段、章节记录、FTS5 检索表共用一个 SQLite 库
+- 统一检索能力：支持 `title / abstract / section_titles / section_snippet` 的基础检索
+- 统一精确匹配能力：支持标题 hint、作者粗匹配、方法名 / 数据集名短语级 exact match
+- 统一语义层：支持 `PaperSemanticCard` 生成、缓存、抽查和稳定性报告
+- 统一意图层：支持自然语言 query -> `IntentFrame`、聚合追问、二轮状态合并、三路 query 生成
+- 统一主链路：支持 `query -> 意图解析 -> 三路检索 -> gap 分析 -> 意图重排 -> 结果解释`
+- 统一入口：提供 `papercompass.py` 项目级 CLI 与 Streamlit Web 界面
+- 保留样例协议、SQLite schema 和调试产物，便于后续扩展
 
-- 用自然语言查论文（中英文都可以）。
-- 自动补全检索意图（场景、主题、方法、时间范围、论文类型等）。
-- 支持追问式检索（先查一轮，再补充需求继续查）。
-- 支持收藏、历史记录、论文详情查看。
-- 同时支持前端界面和命令行。
+## 数据集位置
 
-## 5 分钟快速开始
+项目内置数据集目录：
 
-### 1) 准备环境
+```text
+data/arxiv_202502_cs_cl/
+```
 
-- Windows / macOS / Linux 均可。
-- Python 建议 `3.10+`（已在 `3.11` 环境验证）。
-- 需要能访问网络（首次可能下载默认数据集，且 LLM 调用需要联网）。
+运行时仍然从该目录读取逐篇论文 JSON 文件。
 
-### 2) 安装依赖
+GitHub 上随项目一起发布的数据集分片位于 Release `dataset-20260407` 中：
+
+```text
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part01
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.part02
+...
+https://github.com/wangzekun6/paper_search_app/releases/download/dataset-20260407/arxiv_202502_cs_cl.tar.gz.partNN
+```
+
+本地如需保留未压缩的 tar 包，也可以额外放置：
+
+```text
+bundled_data/arxiv_202502_cs_cl.tar
+```
+
+本地如果手动准备了完整 gzip 归档，也仍然支持：
+
+```text
+bundled_data/arxiv_202502_cs_cl.tar.gz
+```
+
+当 `data/arxiv_202502_cs_cl/` 不存在时，`papercompass.py build`、`day1_pipeline.py`、
+`day2_pipeline.py` 和旧版 `extract.py` 会优先从本地 `.tar` 恢复；若不存在，再尝试本地完整 `.tar.gz`；
+若也不存在，则自动从 GitHub Release 下载 `arxiv_202502_cs_cl.tar.gz.partNN` 分片、拼接并解包恢复。
+
+## 本地运行
+
+### 1. 安装依赖
 
 ```bash
-cd tools
+cd PaperCompass-main/tools
 pip install -r requirements.txt
 ```
 
-### 3) 首次构建数据库（必做）
+### 2. 启动 Web 界面
 
 ```bash
+cd PaperCompass-main/tools
 python papercompass.py build
+streamlit run app.py
 ```
 
-说明：
-
-- 这一步会建立项目数据库。
-- 如果 `data/arxiv_202502_cs_cl/` 不存在，系统会尝试从本地归档或在线 release 恢复默认数据集。
-
-### 4) 启动前端
+### 3. 命令行检索
 
 ```bash
-python -m streamlit run app.py
-```
-
-启动后在浏览器打开页面（通常是 `http://localhost:8501`）。
-
-### 5) 直接搜索
-
-在输入框里填一句话，例如：
-
-```text
-帮我找最近两年的 RAG 综述，并解释为什么推荐
-```
-
-如果系统提示“请补充信息”，在追问输入框补一句再点“继续检索”即可。
-
-## 命令行最常用操作
-
-如果你不想开前端，也可以直接用 CLI。
-以下命令默认在 `tools/` 目录执行。
-
-### 看系统状态
-
-```bash
+cd PaperCompass-main/tools
+python papercompass.py build
 python papercompass.py status
-```
-
-### 普通检索（basic / exact / hybrid）
-
-```bash
 python papercompass.py search "retrieval augmented generation" --mode hybrid --top-k 10
+python papercompass.py cards --target-count 100
+python papercompass.py intent "找最近两年关于RAG的综述，方法不限，最好解释为什么推荐"
+python papercompass.py intent "最近两年，综述优先，方法不限" --history-id 1
+python papercompass.py intent-build
+python papercompass.py chain "我想看 RAG" --follow-up "最近两年，综述优先，最好解释为什么推荐"
+python papercompass.py chain-build
 ```
 
-### 完整主链路（推荐）
-
-```bash
-python papercompass.py chain "recent agent memory papers" --top-k 5 --candidate-pool-size 60 --explain-limit 5
-```
-
-带追问继续检索：
-
-```bash
-python papercompass.py chain "recent agent memory papers" --follow-up "recent two years, explain why each paper matches"
-```
-
-### 常用管理命令
-
-```bash
-python papercompass.py history --limit 20
-python papercompass.py saved --limit 50
-python papercompass.py save 2502.06872
-python papercompass.py unsave 2502.06872
-python papercompass.py paper 2502.06872
-```
-
-## 给新手的推荐使用顺序
-
-1. `build` 一次（首次必做）。  
-2. 启动 Streamlit 前端。  
-3. 先查一轮，再根据提示补一句追问。  
-4. 需要批量验证时，用 `chain-build` 生成 demo 与回归报告。  
-
-```bash
-python papercompass.py chain-build --top-k 3 --candidate-pool-size 30 --explain-limit 3
-```
-
-## 输出文件都在哪
-
-所有运行产物都在：
+## 项目结构
 
 ```text
-system_outputs/
+PaperCompass-main/
+├── bundled_data/
+│   ├── arxiv_202502_cs_cl.tar.gz        # 可选的本地完整 gzip 归档，不纳入 Git
+│   └── arxiv_202502_cs_cl.tar           # 可选的本地 tar 归档，不纳入 Git
+├── data/
+│   └── arxiv_202502_cs_cl/     # 运行时自动解包生成的数据目录
+├── day1_outputs/               # Day 1 产物与样例数据库
+├── day2_outputs/               # Day 2 全量数据库与 query 调试产物
+├── day3_outputs/               # Day 3 Prompt、语义卡片样例、质量检查与缓存策略
+├── day4_outputs/               # Day 4 IntentFrame Prompt、测试结果、合并样例
+├── day5_outputs/               # Day 5 核心链路演示、gap 报告、重排结果、解释 Prompt
+├── tools/
+│   ├── app.py                  # Streamlit 项目界面
+│   ├── papercompass.py         # 统一项目级 CLI 入口
+│   ├── papercompass_services.py # 统一项目服务层
+│   ├── papercompass_intent.py  # 统一意图理解层
+│   ├── papercompass_chain.py   # 统一核心方法链路
+│   ├── day2_pipeline.py        # 内部检索底座实现
+│   ├── day3_pipeline.py        # 内部语义卡片实现
+│   ├── openai_helpers.py       # OpenAI API 访问与查询改写共用模块
+│   ├── extract.py              # 旧版 JSON 检索入口
+│   ├── day1_pipeline.py        # 样例协议与验证产物生成
+│   └── day1_schema.sql         # SQLite schema
 ```
 
-重点看这几个目录：
+## 说明
 
-- `system_outputs/runtime/`：运行数据库、`app_state.json`。
-- `system_outputs/cache/`：语义卡、意图会话、query-paper 匹配缓存。
-- `system_outputs/prompts/`：提示词文件。
-- `system_outputs/eval/`：评估与回归报告。
-- `system_outputs/demos/`：标准查询与演示产物。
-
-## LLM 配置说明（可选）
-
-当前项目默认使用 `tools/papercompass_core/llm.py` 里的配置。  
-如果你要换 API 地址、Key 或默认模型，修改该文件中以下常量：
-
-- `DEFAULT_OPENAI_API_BASE`
-- `DEFAULT_OPENAI_API_KEY`
-- `DEFAULT_OPENAI_MODEL_CANDIDATES`
-
-改完后重启前端或重新执行命令行进程即可生效。
-
-## 常见问题（小白高频）
-
-### 1) `python` 或 `streamlit` 命令找不到
-
-- 先确认 Python 已安装并加入 PATH。
-- 执行 `pip install -r requirements.txt`。
-- 用 `python -m streamlit run app.py` 启动，避免 PATH 问题。
-
-### 2) 首次 `build` 比较慢
-
-- 首次需要建库，且可能下载数据集，慢是正常的。
-- 后续重复使用会快很多。
-
-### 3) 搜索结果为空
-
-- 先试英文关键词（例如 `multimodal reasoning survey`）。
-- 补一条追问，明确时间范围、论文类型或方法约束。
-- 用 `python papercompass.py status` 确认数据库里有论文数据。
-
-### 4) 前端提示 LLM 不可用
-
-- 检查 `llm.py` 中的 API 配置是否正确。
-- 先跑一次：
-
-```bash
-python -c "from papercompass_core.llm import OPENAI_API_KEY,test_openai_api; print(test_openai_api(OPENAI_API_KEY))"
-```
-
-## 核心目录（开发者参考）
-
-```text
-tools/
-├── papercompass.py          # CLI 入口
-├── app.py                   # Streamlit 入口
-└── papercompass_core/
-    ├── services.py          # 统一服务层（前端/CLI都走这里）
-    ├── intent.py            # 意图解析与追问合并
-    ├── chain.py             # 核心主链路（检索+重排+解释）
-    ├── retrieval.py         # sparse / exact / hybrid 检索
-    ├── semantic.py          # 语义卡生成
-    ├── llm.py               # LLM 调用封装
-    ├── ingest.py            # 数据入库
-    ├── models.py            # 数据结构定义
-    └── config.py            # 路径与系统配置
-```
-
-## 一句话总结
-
-先 `build`，再 `streamlit run`，输入自然语言直接查。  
-不满意就补一句追问继续查。
+- 旧的会议目录数据已经移除，不再作为默认读取源。
+- 当前默认读取路径仍是 `data/arxiv_202502_cs_cl`，但当该目录缺失时会优先从本地 `bundled_data/arxiv_202502_cs_cl.tar` 恢复，没有该文件时再尝试本地 `bundled_data/arxiv_202502_cs_cl.tar.gz`，最后回退到 GitHub Release 资源下载。
+- 首次仅依赖 GitHub Release 恢复数据时需要联网；下载完成后会把 `bundled_data/arxiv_202502_cs_cl.tar.gz.partNN` 分片缓存在本地。
+- 默认项目数据库输出为 `day2_outputs/day2_full.db`。
+- 语义卡片默认写回同一个 SQLite 库的 `paper_semantic_cards` 表，并在 `day3_outputs/` 输出 Prompt、质量检查和缓存策略文件。
+- 后续新增功能应优先接入 `papercompass.py` 和 `papercompass_services.py`，避免直接把产品层耦合到某个 day 文件。
