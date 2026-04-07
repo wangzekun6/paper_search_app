@@ -1,0 +1,28 @@
+
+意图理解流水线执行完成
+
+项目目标
+- 当前项目已具备统一 IntentFrame 意图理解层。
+- 支持自然语言 query 解析、聚合追问、二轮回复合并和三路 query 生成。
+
+运行信息
+- OpenAI 可用: True
+- OpenAI 状态说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK.
+- pilot query 数量: 5
+- 测试 query 数量: 25
+- merge 样例数量: 5
+- 测试集中仍需追问的 query 数量: 25
+- merge 后仍需追问的样例数量: 5
+
+已完成能力
+- 固定版 IntentFrame Prompt 已写入 intent_frame.md。
+- 每个槽位均带 value / status / source / confidence。
+- clarification_question 采用单轮聚合追问，不是一问一答式追问。
+- follow-up reply 会与旧状态合并，而不是覆盖旧状态。
+- coarse_queries / dense_queries / exact_queries 已同步生成。
+
+交付物
+- intent_frame.md
+- pilot_intent_frames.json
+- intent_eval.json
+- intent_frame_merge_examples.json

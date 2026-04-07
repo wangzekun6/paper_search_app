@@ -1,0 +1,27 @@
+
+核心方法链路执行完成
+
+核心方法链路
+- query -> 意图解析 -> 聚合追问 -> 三路检索 -> gap 分析 -> 意图重排 -> 结果解释
+
+运行信息
+- 数据库文件: C:\Users\czk30\Desktop\bishe2\PaperCompass-main\archive\legacy_retrieval_assets\retrieval_reference.db
+- OpenAI 可用: False
+- OpenAI 状态说明: OpenAI 测试失败: 未提供 OpenAI API Key。
+- 演示 query 数量: 10
+- 带 follow-up 的演示数量: 6
+- 首轮需要追问的演示数量: 10
+
+已完成能力
+- sparse + dense + exact 三路召回已接通。
+- 三路候选已融合为 top 100 候选池。
+- 每篇候选论文都能构造 PaperEvidencePack。
+- 系统可输出 IntentGapReport。
+- 系统可做意图感知重排并输出 IntentAwareRankResult。
+- top-K 结果带证据和解释，而不是只有排序列表。
+
+交付物
+- ranking_explanation_prompt.md
+- core_chain_demo_runs.json
+- intent_gap_reports.json
+- intent_aware_rank_results_topk.json

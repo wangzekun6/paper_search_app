@@ -1,0 +1,1 @@
+"""PaperCompass core package."""

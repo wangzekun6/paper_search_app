@@ -1,0 +1,344 @@
+[
+  {
+    "query": "retrieval augmented generation survey",
+    "follow_up_reply": "recent two years, explain why each paper matches",
+    "intent_gap_report": {
+      "query_gap": [
+        "方法约束",
+        "模型族约束",
+        "数据集约束",
+        "指标约束",
+        "模态约束",
+        "偏好经典论文"
+      ],
+      "evidence_gap": [
+        "主题匹配",
+        "时间偏好匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "论文类型匹配",
+        "检索场景匹配",
+        "综述偏好匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "主题匹配",
+        "时间偏好匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：technical_constraints.method、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality、result_preferences.prefer_classic"
+      ]
+    }
+  },
+  {
+    "query": "recent agent memory papers",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "研究领域",
+        "研究任务",
+        "论文类型",
+        "方法约束",
+        "模型族约束",
+        "数据集约束"
+      ],
+      "evidence_gap": [
+        "技术约束匹配",
+        "论文类型匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "检索场景匹配",
+        "时间偏好匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "技术约束匹配",
+        "论文类型匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、document_attributes.paper_type、technical_constraints.method、technical_constraints.model_family、technical_constraints.dataset"
+      ]
+    }
+  },
+  {
+    "query": "papers by authors of MALT",
+    "follow_up_reply": "explain why they are related",
+    "intent_gap_report": {
+      "query_gap": [
+        "研究领域",
+        "研究任务",
+        "研究问题",
+        "方法约束",
+        "模型族约束",
+        "数据集约束"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "当前 top 结果的 query-paper 匹配分仍然偏弱。",
+        "技术约束匹配",
+        "论文类型匹配"
+      ],
+      "matched_dimensions": [
+        "检索场景匹配",
+        "主题匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "当前 top 结果的 query-paper 匹配分仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、research_topic.task、research_topic.problem、technical_constraints.method、technical_constraints.model_family、technical_constraints.dataset"
+      ]
+    }
+  },
+  {
+    "query": "quality estimation with COMET",
+    "follow_up_reply": "prefer recent work",
+    "intent_gap_report": {
+      "query_gap": [
+        "模型族约束",
+        "数据集约束",
+        "模态约束",
+        "作者",
+        "标题线索",
+        "偏好经典论文"
+      ],
+      "evidence_gap": [
+        "时间偏好匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "技术约束匹配",
+        "检索场景匹配"
+      ],
+      "ambiguous_dimensions": [
+        "研究领域",
+        "研究任务",
+        "研究问题",
+        "论文类型",
+        "偏好综述"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "时间偏好匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：technical_constraints.model_family、technical_constraints.dataset、technical_constraints.modality、document_attributes.author_name、document_attributes.title_hint、result_preferences.prefer_classic"
+      ]
+    }
+  },
+  {
+    "query": "long context survey papers",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "研究领域",
+        "时间范围",
+        "偏好最新论文",
+        "偏好经典论文",
+        "方法约束",
+        "模型族约束"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "主题匹配"
+      ],
+      "matched_dimensions": [
+        "技术约束匹配",
+        "论文类型匹配",
+        "检索场景匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "主题匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、document_attributes.time_range、result_preferences.prefer_recent、result_preferences.prefer_classic、technical_constraints.method、technical_constraints.model_family"
+      ]
+    }
+  },
+  {
+    "query": "benchmark for large language models on reasoning",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "研究领域",
+        "数据集约束",
+        "时间范围",
+        "研究问题",
+        "方法约束",
+        "指标约束"
+      ],
+      "evidence_gap": [
+        "综述偏好匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "技术约束匹配",
+        "论文类型匹配",
+        "检索场景匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "综述偏好匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、technical_constraints.dataset、document_attributes.time_range、research_topic.problem、technical_constraints.method、technical_constraints.metric"
+      ]
+    }
+  },
+  {
+    "query": "multimodal reasoning papers",
+    "follow_up_reply": "prefer diverse results",
+    "intent_gap_report": {
+      "query_gap": [
+        "方法约束",
+        "偏好最新论文",
+        "偏好综述",
+        "模型族约束",
+        "数据集约束",
+        "指标约束"
+      ],
+      "evidence_gap": [
+        "技术约束匹配",
+        "时间偏好匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "检索场景匹配",
+        "论文类型匹配"
+      ],
+      "ambiguous_dimensions": [
+        "检索场景",
+        "研究任务",
+        "研究问题",
+        "模态约束"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "技术约束匹配",
+        "时间偏好匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：technical_constraints.method、result_preferences.prefer_recent、result_preferences.prefer_survey、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric"
+      ]
+    }
+  },
+  {
+    "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "研究问题",
+        "数据集约束",
+        "指标约束",
+        "模态约束",
+        "作者",
+        "时间范围"
+      ],
+      "evidence_gap": [
+        "时间偏好匹配",
+        "综述偏好匹配"
+      ],
+      "matched_dimensions": [
+        "主题匹配",
+        "技术约束匹配",
+        "论文类型匹配",
+        "检索场景匹配"
+      ],
+      "ambiguous_dimensions": [
+        "偏好综述"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "时间偏好匹配",
+        "综述偏好匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.problem、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality、document_attributes.author_name、document_attributes.time_range"
+      ]
+    }
+  },
+  {
+    "query": "early exit for quality estimation",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "研究领域",
+        "模态约束",
+        "偏好最新论文",
+        "偏好综述",
+        "模型族约束",
+        "数据集约束"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "论文类型匹配",
+        "时间偏好匹配"
+      ],
+      "matched_dimensions": [
+        "技术约束匹配",
+        "检索场景匹配",
+        "主题匹配"
+      ],
+      "ambiguous_dimensions": [],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "论文类型匹配"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：research_topic.domain、technical_constraints.modality、result_preferences.prefer_recent、result_preferences.prefer_survey、technical_constraints.model_family、technical_constraints.dataset"
+      ]
+    }
+  },
+  {
+    "query": "translation quality estimation explainable reason",
+    "follow_up_reply": null,
+    "intent_gap_report": {
+      "query_gap": [
+        "时间范围",
+        "模型族约束",
+        "数据集约束",
+        "指标约束",
+        "模态约束",
+        "作者"
+      ],
+      "evidence_gap": [
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "当前 top 结果的 query-paper 匹配分仍然偏弱。",
+        "技术约束匹配",
+        "主题匹配"
+      ],
+      "matched_dimensions": [
+        "论文类型匹配",
+        "检索场景匹配",
+        "主题匹配"
+      ],
+      "ambiguous_dimensions": [
+        "方法约束"
+      ],
+      "why_current_results_are_broad": [
+        "用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。",
+        "部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。",
+        "top-K 在主题维度上的集中度仍然偏弱。",
+        "当前 top 结果的 query-paper 匹配分仍然偏弱。"
+      ],
+      "what_next_answer_would_improve": [
+        "优先补充以下缺失信息：document_attributes.time_range、technical_constraints.model_family、technical_constraints.dataset、technical_constraints.metric、technical_constraints.modality、document_attributes.author_name"
+      ]
+    }
+  }
+]
