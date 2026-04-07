@@ -1,0 +1,173 @@
+{
+  "required_top_level_keys": [
+    "title",
+    "authors",
+    "abstract",
+    "sections",
+    "appendices",
+    "references"
+  ],
+  "paper_summaries": [
+    {
+      "paper_id": "2502.00008",
+      "source_path": "arxiv_202502_cs_cl/2502.00008.json",
+      "top_level_keys": [
+        "title",
+        "authors",
+        "abstract",
+        "sections",
+        "appendices",
+        "references"
+      ],
+      "has_all_required_keys": true,
+      "authors_type": "str",
+      "sections_type": "dict",
+      "sections_is_dict": true,
+      "section_count": 4,
+      "first_section_key": "1 Introduction",
+      "first_section_keys": [
+        "paragraphs",
+        "subsections"
+      ],
+      "appendices_type": "dict",
+      "appendices_is_dict": true,
+      "appendices_count": 6,
+      "references_type": "list",
+      "references_is_list": true,
+      "references_count": 53
+    },
+    {
+      "paper_id": "2502.12701",
+      "source_path": "arxiv_202502_cs_cl/2502.12701.json",
+      "top_level_keys": [
+        "title",
+        "authors",
+        "abstract",
+        "sections",
+        "appendices",
+        "references"
+      ],
+      "has_all_required_keys": true,
+      "authors_type": "str",
+      "sections_type": "dict",
+      "sections_is_dict": true,
+      "section_count": 8,
+      "first_section_key": "1 Introduction",
+      "first_section_keys": [
+        "paragraphs",
+        "subsections"
+      ],
+      "appendices_type": "dict",
+      "appendices_is_dict": true,
+      "appendices_count": 3,
+      "references_type": "list",
+      "references_is_list": true,
+      "references_count": 42
+    },
+    {
+      "paper_id": "2502.02494",
+      "source_path": "arxiv_202502_cs_cl/2502.02494.json",
+      "top_level_keys": [
+        "title",
+        "authors",
+        "abstract",
+        "sections",
+        "appendices",
+        "references"
+      ],
+      "has_all_required_keys": true,
+      "authors_type": "str",
+      "sections_type": "dict",
+      "sections_is_dict": true,
+      "section_count": 5,
+      "first_section_key": "1 Introduction",
+      "first_section_keys": [
+        "paragraphs",
+        "subsections"
+      ],
+      "appendices_type": "dict",
+      "appendices_is_dict": true,
+      "appendices_count": 2,
+      "references_type": "list",
+      "references_is_list": true,
+      "references_count": 61
+    },
+    {
+      "paper_id": "2502.00577",
+      "source_path": "arxiv_202502_cs_cl/2502.00577.json",
+      "top_level_keys": [
+        "title",
+        "authors",
+        "abstract",
+        "sections",
+        "appendices",
+        "references"
+      ],
+      "has_all_required_keys": true,
+      "authors_type": "str",
+      "sections_type": "dict",
+      "sections_is_dict": true,
+      "section_count": 8,
+      "first_section_key": "1 Introduction",
+      "first_section_keys": [
+        "paragraphs",
+        "subsections"
+      ],
+      "appendices_type": "dict",
+      "appendices_is_dict": true,
+      "appendices_count": 4,
+      "references_type": "list",
+      "references_is_list": true,
+      "references_count": 74
+    },
+    {
+      "paper_id": "2502.14083",
+      "source_path": "arxiv_202502_cs_cl/2502.14083.json",
+      "top_level_keys": [
+        "title",
+        "authors",
+        "abstract",
+        "sections",
+        "appendices",
+        "references"
+      ],
+      "has_all_required_keys": true,
+      "authors_type": "str",
+      "sections_type": "dict",
+      "sections_is_dict": true,
+      "section_count": 0,
+      "first_section_key": null,
+      "first_section_keys": [],
+      "appendices_type": "dict",
+      "appendices_is_dict": true,
+      "appendices_count": 0,
+      "references_type": "list",
+      "references_is_list": true,
+      "references_count": 0
+    }
+  ],
+  "all_have_required_keys": true,
+  "all_sections_are_dict": true,
+  "all_appendices_are_dict": true,
+  "all_references_are_list": true,
+  "papers_with_empty_sections": [
+    "2502.14083"
+  ],
+  "year_month_inference_papers": [
+    "2502.00008",
+    "2502.12701",
+    "2502.02494",
+    "2502.00577",
+    "2502.14083"
+  ],
+  "fixed_conclusions": {
+    "references_into_main_search": false,
+    "appendices_into_main_recall": false,
+    "main_search_fields": [
+      "title",
+      "authors",
+      "abstract",
+      "sections"
+    ]
+  }
+}

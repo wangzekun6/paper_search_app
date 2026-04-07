@@ -1,0 +1,852 @@
+[
+  {
+    "query": "retrieval augmented generation",
+    "parser": "llm",
+    "used_model": "qwen-plus",
+    "intent_frame": {
+      "search_scene": {
+        "value": "topic_exploration",
+        "status": "ambiguous",
+        "source": "user_text",
+        "confidence": 0.4
+      },
+      "research_topic": {
+        "domain": {
+          "value": "natural_language_processing",
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.7
+        },
+        "task": {
+          "value": "open_domain_question_answering",
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.65
+        },
+        "problem": {
+          "value": "hallucination_and_factual_consistency_in_LLMs",
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.6
+        },
+        "keywords": {
+          "value": [
+            "retrieval-augmented generation",
+            "RAG"
+          ],
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.95
+        }
+      },
+      "technical_constraints": {
+        "method": {
+          "value": "retrieval_augmentation",
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.5
+        },
+        "model_family": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "dataset": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "metric": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "modality": {
+          "value": "text",
+          "status": "confirmed",
+          "source": "user_text",
+          "confidence": 0.3
+        }
+      },
+      "document_attributes": {
+        "time_range": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "paper_type": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "author_name": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "title_hint": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "result_preferences": {
+        "prefer_recent": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_classic": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_survey": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_diverse": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "need_explainable_reason": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "missing_slots": [
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "document_attributes.paper_type",
+        "document_attributes.time_range",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason",
+        "document_attributes.author_name",
+        "document_attributes.title_hint"
+      ],
+      "answered_slots": [
+        "search_scene",
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "research_topic.keywords",
+        "technical_constraints.method",
+        "technical_constraints.modality"
+      ],
+      "clarification_needed": true,
+      "clarification_question": "Are you exploring the topic broadly (topic_exploration), looking for a survey paper (survey_lookup), interested in recent advances (recent_progress), seeking a specific paper (specific_paper_lookup), tracing work by a particular author (author_trace), or searching under methodological constraints (method_constrained_search)? Also, do you prefer recent papers, classic works, surveys, or diverse perspectives? Any time range, paper type (e.g., survey, method, empirical_study), or technical constraints (e.g., model family like Llama, dataset like Natural Questions, metric like ROUGE) you'd like to specify?",
+      "coarse_queries": [
+        "retrieval augmented generation",
+        "RAG"
+      ],
+      "dense_queries": [
+        "What are the foundational methods and recent advances in retrieval-augmented generation?",
+        "Survey of retrieval-augmented generation techniques in large language models"
+      ],
+      "exact_queries": [
+        "retrieval-augmented generation",
+        "RAG"
+      ]
+    }
+  },
+  {
+    "query": "recent agent memory papers",
+    "parser": "llm",
+    "used_model": "qwen-plus",
+    "intent_frame": {
+      "search_scene": {
+        "value": "recent_progress",
+        "status": "confirmed",
+        "source": "user text",
+        "confidence": 0.85
+      },
+      "research_topic": {
+        "domain": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "task": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "problem": {
+          "value": "memory mechanism",
+          "status": "confirmed",
+          "source": "rule_completion",
+          "confidence": 0.72
+        },
+        "keywords": {
+          "value": [
+            "agent",
+            "memory"
+          ],
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.7
+        }
+      },
+      "technical_constraints": {
+        "method": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "model_family": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "dataset": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "metric": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "modality": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "document_attributes": {
+        "time_range": {
+          "value": "recent",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.8
+        },
+        "paper_type": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "author_name": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "title_hint": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "result_preferences": {
+        "prefer_recent": {
+          "value": "yes",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.9
+        },
+        "prefer_classic": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_survey": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_diverse": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "need_explainable_reason": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "missing_slots": [
+        "research_topic.domain",
+        "research_topic.task",
+        "document_attributes.paper_type",
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "document_attributes.author_name",
+        "document_attributes.title_hint",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason"
+      ],
+      "answered_slots": [
+        "search_scene",
+        "research_topic.keywords",
+        "document_attributes.time_range",
+        "result_preferences.prefer_recent",
+        "research_topic.problem"
+      ],
+      "clarification_needed": true,
+      "clarification_question": "Could you clarify: (1) the specific research domain (e.g., NLP, robotics, vision), (2) the core task or problem (e.g., long-horizon planning, memory-augmented reasoning), and (3) whether you want surveys, recent method papers, benchmarks, or empirical studies?",
+      "coarse_queries": [
+        "agent memory",
+        "memory in agents",
+        "AI agent memory"
+      ],
+      "dense_queries": [
+        "recent research papers on memory mechanisms for autonomous AI agents",
+        "latest advances in memory architectures for intelligent agents"
+      ],
+      "exact_queries": [
+        "agent memory"
+      ]
+    }
+  },
+  {
+    "query": "找最新的 RAG hallucination mitigation 论文",
+    "parser": "llm",
+    "used_model": "qwen-plus",
+    "intent_frame": {
+      "search_scene": {
+        "value": "recent_progress",
+        "status": "confirmed",
+        "source": "user text",
+        "confidence": 0.95
+      },
+      "research_topic": {
+        "domain": {
+          "value": "natural language processing",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.92
+        },
+        "task": {
+          "value": "hallucination mitigation",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.94
+        },
+        "problem": {
+          "value": "hallucination in retrieval-augmented generation",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.96
+        },
+        "keywords": {
+          "value": [
+            "RAG",
+            "hallucination",
+            "mitigation"
+          ],
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.98
+        }
+      },
+      "technical_constraints": {
+        "method": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "model_family": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "dataset": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "metric": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "modality": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "document_attributes": {
+        "time_range": {
+          "value": "2023–2024",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.95
+        },
+        "paper_type": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "author_name": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "title_hint": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "result_preferences": {
+        "prefer_recent": {
+          "value": "yes",
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.97
+        },
+        "prefer_classic": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_survey": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_diverse": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "need_explainable_reason": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "missing_slots": [
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_survey",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason",
+        "document_attributes.paper_type",
+        "document_attributes.author_name",
+        "document_attributes.title_hint"
+      ],
+      "answered_slots": [
+        "search_scene",
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "research_topic.keywords",
+        "document_attributes.time_range",
+        "result_preferences.prefer_recent"
+      ],
+      "clarification_needed": true,
+      "clarification_question": "为更准确检索，请一次性补充以下信息： 1. 如果有技术约束，请补充方法、模型家族、数据集、评价指标或模态；没有可以直接说不限。 2. 如果有文献属性要求，请补充时间范围、论文类型、作者名或标题线索；没有可以直接说不限。 3. 如果有结果偏好，请说明是否偏向最新、经典、综述、多样结果，以及是否需要解释命中理由。",
+      "coarse_queries": [
+        "RAG hallucination mitigation",
+        "RAG hallucination reduction",
+        "factual consistency RAG"
+      ],
+      "dense_queries": [
+        "recent methods to mitigate hallucination in retrieval-augmented generation systems",
+        "2023–2024 papers on reducing hallucinations in RAG pipelines",
+        "how to improve factual accuracy and reduce hallucination in RAG models"
+      ],
+      "exact_queries": [
+        "RAG hallucination mitigation"
+      ]
+    }
+  },
+  {
+    "query": "帮我找机器翻译综述",
+    "parser": "llm",
+    "used_model": "qwen-plus",
+    "intent_frame": {
+      "search_scene": {
+        "value": "survey_lookup",
+        "status": "confirmed",
+        "source": "user text: '帮我找机器翻译综述'",
+        "confidence": 0.95
+      },
+      "research_topic": {
+        "domain": {
+          "value": "natural language processing",
+          "status": "confirmed",
+          "source": "user text: '机器翻译'",
+          "confidence": 0.9
+        },
+        "task": {
+          "value": "machine translation",
+          "status": "confirmed",
+          "source": "user text: '机器翻译'",
+          "confidence": 0.9
+        },
+        "problem": {
+          "value": "automated translation between languages",
+          "status": "confirmed",
+          "source": "user text: '机器翻译'",
+          "confidence": 0.8
+        },
+        "keywords": {
+          "value": [
+            "machine translation"
+          ],
+          "status": "confirmed",
+          "source": "user text: '机器翻译'",
+          "confidence": 0.85
+        }
+      },
+      "technical_constraints": {
+        "method": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "model_family": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "dataset": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "metric": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "modality": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "document_attributes": {
+        "time_range": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "paper_type": {
+          "value": "survey",
+          "status": "confirmed",
+          "source": "user text: '综述'",
+          "confidence": 0.95
+        },
+        "author_name": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "title_hint": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "result_preferences": {
+        "prefer_recent": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_classic": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_survey": {
+          "value": "yes",
+          "status": "confirmed",
+          "source": "user text: '综述'",
+          "confidence": 0.95
+        },
+        "prefer_diverse": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "need_explainable_reason": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "missing_slots": [
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+        "result_preferences.prefer_recent",
+        "result_preferences.prefer_classic",
+        "result_preferences.prefer_diverse",
+        "result_preferences.need_explainable_reason",
+        "document_attributes.time_range",
+        "document_attributes.author_name",
+        "document_attributes.title_hint"
+      ],
+      "answered_slots": [
+        "search_scene",
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "research_topic.keywords",
+        "document_attributes.paper_type",
+        "result_preferences.prefer_survey"
+      ],
+      "clarification_needed": true,
+      "clarification_question": "为更准确检索，请一次性补充以下信息： 1. 如果有技术约束，请补充方法、模型家族、数据集、评价指标或模态；没有可以直接说不限。 2. 如果有文献属性要求，请补充时间范围、论文类型、作者名或标题线索；没有可以直接说不限。 3. 如果有结果偏好，请说明是否偏向最新、经典、综述、多样结果，以及是否需要解释命中理由。",
+      "coarse_queries": [
+        "machine translation survey",
+        "MT review",
+        "neural machine translation overview"
+      ],
+      "dense_queries": [
+        "comprehensive survey papers on machine translation published in recent years",
+        "state-of-the-art review of machine translation techniques and progress"
+      ],
+      "exact_queries": [
+        "machine translation",
+        "综述",
+        "survey"
+      ]
+    }
+  },
+  {
+    "query": "我想看最近两年 speech-to-speech translation 的进展",
+    "parser": "llm",
+    "used_model": "qwen-plus",
+    "intent_frame": {
+      "search_scene": {
+        "value": "recent_progress",
+        "status": "confirmed",
+        "source": "用户文本：'最近两年...进展'",
+        "confidence": 0.95
+      },
+      "research_topic": {
+        "domain": {
+          "value": "speech processing",
+          "status": "confirmed",
+          "source": "用户文本：'speech-to-speech translation'",
+          "confidence": 0.9
+        },
+        "task": {
+          "value": "speech-to-speech translation",
+          "status": "confirmed",
+          "source": "用户文本：'speech-to-speech translation'",
+          "confidence": 0.95
+        },
+        "problem": {
+          "value": "",
+          "status": "ambiguous",
+          "source": "inferred from task",
+          "confidence": 0.6
+        },
+        "keywords": {
+          "value": [
+            "speech-to-speech translation",
+            "S2ST"
+          ],
+          "status": "confirmed",
+          "source": "user text",
+          "confidence": 0.85
+        }
+      },
+      "technical_constraints": {
+        "method": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "model_family": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "dataset": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "metric": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "modality": {
+          "value": "audio",
+          "status": "confirmed",
+          "source": "task implies audio-to-audio",
+          "confidence": 0.8
+        }
+      },
+      "document_attributes": {
+        "time_range": {
+          "value": "2023-01-01 to 2025-06-01",
+          "status": "confirmed",
+          "source": "用户文本：'最近两年'",
+          "confidence": 0.95
+        },
+        "paper_type": {
+          "value": "",
+          "status": "ambiguous",
+          "source": "user text implicit intent",
+          "confidence": 0.7
+        },
+        "author_name": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "title_hint": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "result_preferences": {
+        "prefer_recent": {
+          "value": "yes",
+          "status": "confirmed",
+          "source": "用户文本：'最近两年'",
+          "confidence": 0.9
+        },
+        "prefer_classic": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "prefer_survey": {
+          "value": "",
+          "status": "ambiguous",
+          "source": "implied by '进展' but not explicit",
+          "confidence": 0.5
+        },
+        "prefer_diverse": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        },
+        "need_explainable_reason": {
+          "value": "",
+          "status": "missing",
+          "source": "",
+          "confidence": 0.0
+        }
+      },
+      "missing_slots": [
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "result_preferences.prefer_diverse",
+        "result_preferences.prefer_classic",
+        "result_preferences.need_explainable_reason",
+        "document_attributes.author_name",
+        "document_attributes.title_hint"
+      ],
+      "answered_slots": [
+        "search_scene",
+        "research_topic.task",
+        "research_topic.domain",
+        "document_attributes.time_range",
+        "result_preferences.prefer_recent",
+        "research_topic.problem",
+        "research_topic.keywords",
+        "technical_constraints.modality",
+        "document_attributes.paper_type",
+        "result_preferences.prefer_survey"
+      ],
+      "clarification_needed": true,
+      "clarification_question": "您是否希望获取综述类论文（survey）？是否有偏好的方法（如端到端、级联）、模型家族（如Whisper、SeamlessM4T）、数据集（如VoxPopuli-ST, CoVoST）或评测指标（如BLEU、TER、SIM）？",
+      "coarse_queries": [
+        "speech-to-speech translation",
+        "S2ST",
+        "voice-to-voice translation"
+      ],
+      "dense_queries": [
+        "recent advances in speech-to-speech translation from 2023 to 2025",
+        "what are the latest developments in end-to-end spoken language translation?",
+        "state-of-the-art in direct speech-to-speech translation over the past two years"
+      ],
+      "exact_queries": [
+        "speech-to-speech translation",
+        "S2ST"
+      ]
+    }
+  }
+]

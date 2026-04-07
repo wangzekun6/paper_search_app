@@ -1,0 +1,19 @@
+核心链路构建完成
+
+运行信息
+- 数据库文件: C:\Users\czk30\Desktop\bishe2\PaperCompass-main\system_outputs\runtime\papercompass_20260407_203227.db
+- OpenAI 可用: True
+- OpenAI 状态说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK
+- 演示 query 数量: 10
+- 带 follow-up 的演示数量: 4
+- 首轮需要追问的演示数量: 10
+
+输出文件
+- 提示词: system_outputs/prompts/query_paper_match.md
+- 演示结果: system_outputs/demos/demo_runs.json
+- gap 报告: system_outputs/eval/gap_reports.json
+- 排序评估: system_outputs/eval/ranking_eval.json
+- 解释样例: system_outputs/eval/explanation_samples.json
+- 标准查询: system_outputs/demos/standard_queries.json
+- 回归报告: system_outputs/eval/regression_report.json
+- 演示说明: system_outputs/demos/demo_walkthrough.md

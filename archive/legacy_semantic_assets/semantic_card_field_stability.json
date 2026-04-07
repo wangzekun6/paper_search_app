@@ -1,0 +1,38 @@
+{
+  "generated_card_count": 100,
+  "critical_field_non_empty_rates": {
+    "domain_tags": 1.0,
+    "task_tags": 1.0,
+    "method_tags": 0.97,
+    "paper_type": 1.0,
+    "core_contributions": 1.0,
+    "likely_user_intents": 1.0
+  },
+  "stable_fields": [
+    "domain_tags",
+    "task_tags",
+    "method_tags",
+    "paper_type",
+    "core_contributions",
+    "likely_user_intents"
+  ],
+  "drift_risk_fields": [],
+  "paper_type_distribution": {
+    "method": 61,
+    "benchmark": 18,
+    "survey": 10,
+    "empirical_study": 6,
+    "analysis": 3,
+    "application_study": 2
+  },
+  "likely_user_intent_distribution": {
+    "specific_paper_lookup": 100,
+    "recent_progress": 95,
+    "method_constrained_search": 85,
+    "topic_exploration": 82,
+    "survey_lookup": 38
+  },
+  "quality_issue_counts": {
+    "missing_method_tags": 3
+  }
+}

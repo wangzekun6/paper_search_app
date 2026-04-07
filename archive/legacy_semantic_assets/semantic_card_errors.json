@@ -1,0 +1,30 @@
+[
+  {
+    "paper_id": "2502.03916",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.06329",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.12022",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.00306",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.01619",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.11090",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  },
+  {
+    "paper_id": "2502.01243",
+    "error": "HTTPSConnectionPool(host='dashscope.aliyuncs.com', port=443): Read timed out. (read timeout=20)"
+  }
+]
