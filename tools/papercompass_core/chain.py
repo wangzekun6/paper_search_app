@@ -1,8 +1,8 @@
-"""
-PaperCompass 核心方法主链路。
+﻿"""
+PaperCompass 鏍稿績鏂规硶涓婚摼璺€?
 
-负责把前四项能力串起来：
-query -> 意图解析 -> 聚合追问 -> 三路检索 -> gap 分析 -> 意图重排 -> 结果解释
+璐熻矗鎶婂墠鍥涢」鑳藉姏涓茶捣鏉ワ細
+query -> 鎰忓浘瑙ｆ瀽 -> 鑱氬悎杩介棶 -> 涓夎矾妫€绱?-> gap 鍒嗘瀽 -> 鎰忓浘閲嶆帓 -> 缁撴灉瑙ｉ噴
 """
 
 from __future__ import annotations
@@ -51,17 +51,27 @@ ERROR_LOG_PATH = CHAIN_ERRORS_PATH
 
 FUSION_WEIGHTS = {"sparse": 0.45, "dense": 0.35, "exact": 0.20}
 INTENT_SCORE_WEIGHTS = {
-    "scene_match": 0.20,
-    "topic_match": 0.30,
+    "scene_match": 0.12,
+    "topic_match": 0.45,
     "constraint_match": 0.25,
-    "paper_type_match": 0.10,
-    "time_preference_match": 0.10,
-    "survey_preference_match": 0.05,
+    "paper_type_match": 0.08,
+    "time_preference_match": 0.06,
+    "survey_preference_match": 0.04,
 }
 DEFAULT_CANDIDATE_POOL_SIZE = 40
 DEFAULT_TOP_K = 5
 DEFAULT_EXPLAIN_LIMIT = 5
 DEFAULT_EXPLANATION_WORKERS = 4
+DEFAULT_QUERY_MATCH_BATCH_SIZE = 8
+DEFAULT_QUERY_MATCH_SECTION_LIMIT = 2
+DEFAULT_QUERY_MATCH_SNIPPET_LIMIT = 2
+DEFAULT_LLM_MATCH_MIN_LIMIT = 18
+DEFAULT_LLM_MATCH_SCORE_GAP = 0.06
+DEFAULT_LLM_MATCH_NEIGHBOR_GAP = 0.025
+DEFAULT_STANDARD_QUERY_SEMANTIC_TOP_N = 6
+DEFAULT_STANDARD_QUERY_SEMANTIC_MIN_FREQUENCY = 2
+QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v4"
+QUERY_MATCH_PROMPT_VERSION = "query_paper_match_v3"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 DENSE_INDEX_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -71,44 +81,44 @@ DENSE_INDEX_DISK_CACHE_SUBDIR = "dense_indexes"
 DENSE_INDEX_DISK_CACHE_KEEP_PER_DB = 3
 
 DIMENSION_LABELS = {
-    "scene_match": "检索场景匹配",
-    "topic_match": "主题匹配",
-    "constraint_match": "技术约束匹配",
-    "paper_type_match": "论文类型匹配",
-    "time_preference_match": "时间偏好匹配",
-    "survey_preference_match": "综述偏好匹配",
-    "scene": "检索场景匹配",
-    "topic": "主题匹配",
-    "constraint": "技术约束匹配",
-    "constraints": "技术约束匹配",
-    "paper_type": "论文类型匹配",
-    "paper type": "论文类型匹配",
-    "time_preference": "时间偏好匹配",
-    "time preference": "时间偏好匹配",
-    "survey_preference": "综述偏好匹配",
-    "survey preference": "综述偏好匹配",
+    "scene_match": "Scene match",
+    "topic_match": "Topic match",
+    "constraint_match": "Constraint match",
+    "paper_type_match": "Paper type match",
+    "time_preference_match": "Time preference match",
+    "survey_preference_match": "Survey preference match",
+    "scene": "Scene match",
+    "topic": "Topic match",
+    "constraint": "Constraint match",
+    "constraints": "Constraint match",
+    "paper_type": "Paper type match",
+    "paper type": "Paper type match",
+    "time_preference": "Time preference match",
+    "time preference": "Time preference match",
+    "survey_preference": "Survey preference match",
+    "survey preference": "Survey preference match",
 }
 
 SLOT_PATH_LABELS = {
-    "search_scene": "检索场景",
-    "research_topic.domain": "研究领域",
-    "research_topic.task": "研究任务",
-    "research_topic.problem": "研究问题",
-    "research_topic.keywords": "主题关键词",
-    "technical_constraints.method": "方法约束",
-    "technical_constraints.model_family": "模型族约束",
-    "technical_constraints.dataset": "数据集约束",
-    "technical_constraints.metric": "指标约束",
-    "technical_constraints.modality": "模态约束",
-    "document_attributes.time_range": "时间范围",
-    "document_attributes.paper_type": "论文类型",
-    "document_attributes.author_name": "作者",
-    "document_attributes.title_hint": "标题线索",
-    "result_preferences.prefer_recent": "偏好最新论文",
-    "result_preferences.prefer_classic": "偏好经典论文",
-    "result_preferences.prefer_survey": "偏好综述",
-    "result_preferences.prefer_diverse": "偏好多样结果",
-    "result_preferences.need_explainable_reason": "需要可解释理由",
+    "search_scene": "Search scene",
+    "research_topic.domain": "Research domain",
+    "research_topic.task": "Research task",
+    "research_topic.problem": "Research problem",
+    "research_topic.keywords": "Topic keywords",
+    "technical_constraints.method": "Method constraint",
+    "technical_constraints.model_family": "Model family constraint",
+    "technical_constraints.dataset": "Dataset constraint",
+    "technical_constraints.metric": "Metric constraint",
+    "technical_constraints.modality": "Modality constraint",
+    "document_attributes.time_range": "Time range",
+    "document_attributes.paper_type": "Paper type",
+    "document_attributes.author_name": "Author",
+    "document_attributes.title_hint": "Title hint",
+    "result_preferences.prefer_recent": "Prefer recent",
+    "result_preferences.prefer_classic": "Prefer classic",
+    "result_preferences.prefer_survey": "Prefer survey",
+    "result_preferences.prefer_diverse": "Prefer diverse results",
+    "result_preferences.need_explainable_reason": "Need explainable reason",
 }
 
 STANDARD_QUERY_SPECS = [
@@ -204,14 +214,22 @@ STANDARD_QUERY_SPECS = [
 ]
 METHOD_LIKE_PAPER_TYPES = {"method", "empirical_study", "application_study", "analysis"}
 
-EXPLANATION_SYSTEM_PROMPT = """你负责判断候选论文是否匹配用户的学术检索意图。
+EXPLANATION_SYSTEM_PROMPT = """You judge whether a candidate paper truly matches the user's academic retrieval intent.
 
-只能使用给定的 intent frame、semantic card、matched snippets 和排序特征。
-不要编造证据，只返回 JSON。
-其中：
-1. brief_reason 必须使用简体中文，控制在 1 到 2 句话。
-2. matched_dimensions 和 unmet_dimensions 优先使用简体中文短语；若使用系统维度标识，只能从以下集合中选择：
-   scene_match, topic_match, constraint_match, paper_type_match, time_preference_match, survey_preference_match。
+Use only the provided intent frame, semantic card, matched snippets, and retrieval signals.
+Do not invent evidence. Return JSON only.
+
+Requirements:
+0. Topic specificity dominates. A paper that is broader, adjacent, or only loosely related to the requested topic must not receive a high score just because it matches paper type, recency, or retrieval score.
+1. `brief_reason` must be concise English in 1-2 sentences.
+2. `matched_dimensions` and `unmet_dimensions` should prefer short human-readable phrases; if you use system dimension ids, only use:
+   scene_match, topic_match, constraint_match, paper_type_match, time_preference_match, survey_preference_match.
+3. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
+4. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
+5. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
+6. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
+7. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
+8. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
 """
 
 EXPLANATION_SCHEMA = {
@@ -242,6 +260,76 @@ EXPLANATION_SCHEMA = {
         "brief_reason",
     ],
 }
+
+EXPLANATION_BATCH_SYSTEM_PROMPT = """You judge whether each candidate paper truly matches the user's academic retrieval intent.
+
+Use only the provided intent frame, semantic card, matched snippets, and retrieval signals.
+Do not invent evidence. Return JSON only.
+
+Requirements:
+0. Topic specificity dominates. A paper that is broader, adjacent, or only loosely related to the requested topic must not receive a high score just because it matches paper type, recency, or retrieval score.
+1. Evaluate every paper independently.
+2. Return exactly one result object per input `paper_id`.
+3. Copy each `paper_id` exactly as provided.
+4. `brief_reason` must be concise English in 1-2 sentences.
+5. `matched_dimensions` and `unmet_dimensions` should prefer short human-readable phrases; if you use system dimension ids, only use:
+   scene_match, topic_match, constraint_match, paper_type_match, time_preference_match, survey_preference_match.
+6. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
+7. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
+8. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
+9. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
+10. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
+11. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
+"""
+
+
+def build_query_paper_match_item_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "paper_id": {"type": "string"},
+            "main_intent_satisfied": {"type": "boolean"},
+            "matched_dimensions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 4,
+            },
+            "unmet_dimensions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 4,
+            },
+            "match_score": {"type": "number"},
+            "evidence_sufficiency": {"type": "number"},
+            "brief_reason": {"type": "string"},
+        },
+        "required": [
+            "paper_id",
+            "main_intent_satisfied",
+            "matched_dimensions",
+            "unmet_dimensions",
+            "match_score",
+            "evidence_sufficiency",
+            "brief_reason",
+        ],
+    }
+
+
+def build_query_paper_match_batch_schema(batch_size: int) -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": build_query_paper_match_item_schema(),
+                "minItems": 1,
+                "maxItems": max(1, batch_size),
+            }
+        },
+        "required": ["results"],
+    }
 
 
 def ensure_output_dir() -> None:
@@ -311,7 +399,7 @@ def localize_user_label(value: Any) -> str:
         return DIMENSION_LABELS[text]
     if text.startswith("Matched dimension:"):
         _, _, dimension = text.partition(":")
-        return "命中维度：" + localize_dimension_label(dimension)
+        return "Matched dimension: " + localize_dimension_label(dimension)
     return text
 
 
@@ -322,33 +410,267 @@ def localize_user_label_list(values: Iterable[Any], limit: int = 8) -> List[str]
 def build_match_reason_fallback(matched_dimensions: Sequence[str], main_intent_satisfied: bool) -> str:
     localized_dimensions = localize_user_label_list(matched_dimensions, limit=3)
     if localized_dimensions:
-        prefix = "该论文与当前查询在以下维度上较为匹配："
-        suffix = "，整体满足主要检索意图。" if main_intent_satisfied else "，但仍建议结合约束条件进一步判断。"
-        return prefix + "、".join(localized_dimensions) + suffix
+        prefix = "The paper matches on: "
+        suffix = "; overall the main intent is satisfied." if main_intent_satisfied else "; overall the intent match is partial."
+        return prefix + "; ".join(localized_dimensions) + suffix
     if main_intent_satisfied:
-        return "该论文与当前查询整体较为匹配，现有证据基本支持当前推荐。"
-    return "该论文与当前查询存在一定相关性，但匹配证据仍然有限。"
+        return "The paper is broadly aligned with the current query and the available evidence supports the recommendation."
+    return "The paper is somewhat related, but the match evidence is still limited."
+
+
+def coerce_query_match_score(value: Any, default: float = 0.0) -> float:
+    text = clean_text(value).lower()
+    if not text:
+        return clamp_score(default)
+    try:
+        return clamp_score(float(text))
+    except (TypeError, ValueError):
+        pass
+
+    score_aliases = {
+        "very high": 0.95,
+        "high": 0.85,
+        "strong": 0.85,
+        "good": 0.72,
+        "sufficient": 0.72,
+        "medium": 0.55,
+        "moderate": 0.55,
+        "partial": 0.5,
+        "mixed": 0.45,
+        "low": 0.25,
+        "weak": 0.25,
+        "insufficient": 0.2,
+        "poor": 0.15,
+        "none": 0.0,
+        "no": 0.0,
+    }
+    return clamp_score(score_aliases.get(text, default))
+
+
+def coerce_query_match_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = clean_text(value).lower()
+    if text in {"true", "yes", "y", "1", "high", "strong", "good", "sufficient", "matched", "satisfied"}:
+        return True
+    if text in {"false", "no", "n", "0", "low", "weak", "insufficient", "none", "partial", "mixed"}:
+        return False
+    return bool(value)
 
 
 def normalize_query_paper_match_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     matched_dimensions = localize_user_label_list(raw_payload.get("matched_dimensions", []), limit=4)
     unmet_dimensions = localize_user_label_list(raw_payload.get("unmet_dimensions", []), limit=4)
     brief_reason = clean_text(raw_payload.get("brief_reason", ""))
-    main_intent_satisfied = bool(raw_payload.get("main_intent_satisfied"))
-    if not brief_reason or not contains_chinese(brief_reason):
+    main_intent_satisfied = coerce_query_match_bool(raw_payload.get("main_intent_satisfied"))
+    if not brief_reason:
         brief_reason = build_match_reason_fallback(matched_dimensions, main_intent_satisfied)
     return {
         "main_intent_satisfied": main_intent_satisfied,
         "matched_dimensions": matched_dimensions,
         "unmet_dimensions": unmet_dimensions,
-        "match_score": clamp_score(raw_payload.get("match_score", 0.0)),
-        "evidence_sufficiency": clamp_score(raw_payload.get("evidence_sufficiency", 0.0)),
+        "match_score": coerce_query_match_score(raw_payload.get("match_score", 0.0)),
+        "evidence_sufficiency": coerce_query_match_score(raw_payload.get("evidence_sufficiency", 0.0)),
         "brief_reason": brief_reason,
     }
 
 
+def truncate_text(value: Any, max_chars: int = 320) -> str:
+    text = clean_text(value)
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 3)].rstrip() + "..."
+
+
+def compact_json_value(
+    value: Any,
+    *,
+    max_depth: int = 2,
+    max_items: int = 6,
+    max_chars: int = 240,
+) -> Any:
+    if max_depth <= 0:
+        if isinstance(value, (dict, list)):
+            return [] if isinstance(value, list) else {}
+        return truncate_text(value, max_chars=max_chars)
+
+    if isinstance(value, dict):
+        compacted: Dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= max_items:
+                break
+            compacted[clean_text(key)] = compact_json_value(
+                item,
+                max_depth=max_depth - 1,
+                max_items=max_items,
+                max_chars=max_chars,
+            )
+        return compacted
+
+    if isinstance(value, list):
+        return [
+            compact_json_value(item, max_depth=max_depth - 1, max_items=max_items, max_chars=max_chars)
+            for item in value[:max_items]
+        ]
+
+    if isinstance(value, str):
+        return truncate_text(value, max_chars=max_chars)
+    return value
+
+
+def build_query_paper_match_paper_payload(
+    evidence_pack: Dict[str, Any],
+    rank_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "paper_id": rank_result["paper_id"],
+        "title": truncate_text(rank_result.get("title", ""), max_chars=240),
+        "authors": truncate_text(rank_result.get("authors_raw", ""), max_chars=240),
+        "year_month": clean_text(rank_result.get("year_month", "")),
+        "abstract": truncate_text(rank_result.get("abstract", ""), max_chars=1200),
+        "semantic_card": compact_json_value(
+            evidence_pack.get("semantic_card", {}),
+            max_depth=2,
+            max_items=6,
+            max_chars=240,
+        ),
+        "matched_sections": [
+            truncate_text(section, max_chars=180)
+            for section in clean_string_list(
+                evidence_pack.get("matched_sections", []),
+                limit=DEFAULT_QUERY_MATCH_SECTION_LIMIT,
+            )
+        ],
+        "matched_snippets": [
+            {
+                "field": clean_text(item.get("field", "")),
+                "snippet": truncate_text(item.get("snippet", ""), max_chars=260),
+            }
+            for item in list(evidence_pack.get("matched_snippets", []))[:DEFAULT_QUERY_MATCH_SNIPPET_LIMIT]
+        ],
+        "retrieval_signals": {
+            "base_score": round(float(rank_result.get("base_score", 0.0) or 0.0), 6),
+            "preliminary_score": round(float(rank_result.get("preliminary_score", 0.0) or 0.0), 6),
+            "retrieval_sources": clean_string_list(rank_result.get("retrieval_sources", []), limit=4),
+            "matched_field": clean_text(rank_result.get("matched_field", "")),
+            "exact_match_type": clean_text(rank_result.get("exact_match_type", "")),
+        },
+    }
+
+
+def load_cached_query_paper_match(
+    intent_frame: Dict[str, Any],
+    paper_id: str,
+) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
+    cache_path = query_match_cache_path(intent_frame, paper_id)
+    if not cache_path.exists():
+        return None
+    try:
+        cached_payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        if (
+            isinstance(cached_payload, dict)
+            and cached_payload.get("cache_version") == QUERY_MATCH_CACHE_VERSION
+            and cached_payload.get("prompt_version") == QUERY_MATCH_PROMPT_VERSION
+            and cached_payload.get("generator") in {"llm_query_paper_match", "llm_query_paper_match_batch"}
+            and isinstance(cached_payload.get("query_paper_match"), dict)
+        ):
+            normalized_payload = normalize_query_paper_match_payload(cached_payload["query_paper_match"])
+            return normalized_payload, cached_payload.get("used_model")
+    except Exception:
+        return None
+    return None
+
+
+def write_cached_query_paper_match(
+    intent_frame: Dict[str, Any],
+    paper_id: str,
+    payload: Dict[str, Any],
+    used_model: Optional[str],
+    *,
+    generator: str,
+) -> None:
+    cache_path = query_match_cache_path(intent_frame, paper_id)
+    write_json(
+        cache_path,
+        {
+            "cache_version": QUERY_MATCH_CACHE_VERSION,
+            "prompt_version": QUERY_MATCH_PROMPT_VERSION,
+            "generator": generator,
+            "used_model": used_model,
+            "query_paper_match": payload,
+        },
+    )
+
+
+def normalize_query_paper_match_batch_payload(
+    raw_payload: Any,
+    expected_paper_ids: Sequence[str],
+) -> Dict[str, Dict[str, Any]]:
+    expected_ids = [clean_text(paper_id) for paper_id in expected_paper_ids if clean_text(paper_id)]
+    expected_set = set(expected_ids)
+    if isinstance(raw_payload, list):
+        raw_results = raw_payload
+    elif isinstance(raw_payload, dict):
+        raw_results = raw_payload.get("results", raw_payload.get("items", []))
+    else:
+        raw_results = []
+    if not isinstance(raw_results, list) or not raw_results:
+        raise OpenAIAPIError("LLM query-paper match batch returned no results.")
+
+    normalized_results: Dict[str, Dict[str, Any]] = {}
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        paper_id = clean_text(item.get("paper_id", ""))
+        if not paper_id or paper_id not in expected_set or paper_id in normalized_results:
+            continue
+        normalized_results[paper_id] = normalize_query_paper_match_payload(item)
+
+    missing_ids = [paper_id for paper_id in expected_ids if paper_id not in normalized_results]
+    if missing_ids:
+        raise OpenAIAPIError("LLM query-paper match batch omitted results for: " + ", ".join(missing_ids[:5]))
+    return normalized_results
+
+
+def chunk_rank_items(items: Sequence[Dict[str, Any]], batch_size: int) -> List[List[Dict[str, Any]]]:
+    size = max(1, batch_size)
+    return [list(items[index : index + size]) for index in range(0, len(items), size)]
+
+
+def compute_llm_match_limit(
+    ranked: Sequence[Dict[str, Any]],
+    *,
+    top_k: int,
+    explain_limit: int,
+) -> int:
+    if not ranked:
+        return 0
+
+    minimum_limit = min(
+        len(ranked),
+        max(top_k + 2, explain_limit + 1, DEFAULT_LLM_MATCH_MIN_LIMIT),
+    )
+    hard_limit = min(len(ranked), max(top_k * 3, explain_limit * 2, 8))
+    if minimum_limit >= hard_limit:
+        return minimum_limit
+
+    limit = minimum_limit
+    top_score = float(ranked[0].get("preliminary_score", 0.0) or 0.0)
+    previous_score = float(ranked[minimum_limit - 1].get("preliminary_score", 0.0) or 0.0)
+    for index in range(minimum_limit, hard_limit):
+        current_score = float(ranked[index].get("preliminary_score", 0.0) or 0.0)
+        if (top_score - current_score) <= DEFAULT_LLM_MATCH_SCORE_GAP or (
+            previous_score - current_score
+        ) <= DEFAULT_LLM_MATCH_NEIGHBOR_GAP:
+            limit = index + 1
+            previous_score = current_score
+            continue
+        break
+    return limit
+
+
 def comparable_text(value: Any) -> str:
-    return clean_text(value).lower().replace("–", "-").replace("—", "-")
+    return clean_text(value).lower().replace("–", "-").replace("—", "-").replace("’", "'")
 
 
 CANONICAL_SLOT_PATTERNS = {
@@ -370,6 +692,9 @@ CANONICAL_SLOT_PATTERNS = {
     "memory_mechanism": (
         "memory mechanism",
         "agent memory",
+        "memory in agent systems",
+        "memory construction",
+        "long-term memory",
     ),
     "multimodal": (
         "multimodal",
@@ -493,14 +818,14 @@ def append_error_log(entry: Dict[str, Any]) -> None:
 
 
 def write_prompt_file() -> None:
-    content = f"""# Query-Paper 匹配提示词
+    content = f"""# Query-Paper 鍖归厤鎻愮ず璇?
 
-默认模型: {OPENAI_MODEL}
+榛樿妯″瀷: {OPENAI_MODEL}
 
-## 系统提示词
+## 绯荤粺鎻愮ず璇?
 {EXPLANATION_SYSTEM_PROMPT}
 
-## 输出 Schema
+## 杈撳嚭 Schema
 ```json
 {json.dumps(EXPLANATION_SCHEMA, ensure_ascii=False, indent=2)}
 ```
@@ -1069,11 +1394,13 @@ def compute_time_match(intent_frame: Dict[str, Any], row: Any) -> Tuple[float, L
     prefer_classic = intent.get_slot(intent_frame, intent.SLOT_SPECS["result_preferences.prefer_classic"]["path"])
 
     if prefer_classic["status"] == "confirmed" and prefer_classic["value"] == "yes":
-        conflicts.append("当前语料库以近期论文为主，难以满足经典论文偏好。")
+        conflicts.append("The current corpus is skewed toward recent papers, so classic-paper preference cannot be fully satisfied.")
         return 0.0, conflicts
     if time_slot["status"] == "confirmed" and time_slot["value"] not in {"", "recent", "last 2 years", "last 3 years"}:
         if time_slot["value"] not in year_month and not time_slot["value"].startswith(">="):
-            conflicts.append(f"当前论文时间信息 `{year_month}` 与期望时间范围 `{time_slot['value']}` 不完全匹配。")
+            conflicts.append(
+                f"Paper time metadata `{year_month}` does not fully match the requested range `{time_slot['value']}`."
+            )
             return 0.2, conflicts
     if prefer_recent["status"] == "confirmed" and prefer_recent["value"] == "yes":
         return 1.0, conflicts
@@ -1089,10 +1416,12 @@ def compute_survey_match(intent_frame: Dict[str, Any], paper_type: str) -> Tuple
         if prefer_survey["value"] == "yes":
             if paper_type == "survey":
                 return 1.0, conflicts
-            conflicts.append("用户偏好综述，但该论文不是 survey。")
+            conflicts.append("The user prefers survey papers, but this paper is not a survey.")
             return 0.0, conflicts
         if prefer_survey["value"] == "no":
-            return (1.0, conflicts) if paper_type != "survey" else (0.2, ["用户不偏好综述，但该论文是 survey。"])
+            if paper_type != "survey":
+                return 1.0, conflicts
+            return 0.2, ["The user does not prefer surveys, but this paper is a survey."]
     return 0.5, conflicts
 
 
@@ -1103,7 +1432,7 @@ def compute_paper_type_match(intent_frame: Dict[str, Any], paper_type: str) -> T
         return 0.5, conflicts
     if requested["value"] == paper_type:
         return 1.0, conflicts
-    conflicts.append(f"用户希望 `{requested['value']}`，但论文类型为 `{paper_type}`。")
+    conflicts.append(f"The user asked for `{requested['value']}`, but the paper type is `{paper_type}`.")
     return 0.0, conflicts
 
 
@@ -1207,6 +1536,7 @@ def build_paper_evidence_pack(
         "matched_snippets": matched_snippets[:4],
         "intent_alignment_candidates": clean_string_list(intent_alignment_candidates, limit=6),
         "constraint_conflicts": [],
+        "section_matches_included": bool(include_section_matches),
     }
 
 
@@ -1231,7 +1561,9 @@ def score_candidate_against_intent(
     constraint_match = compute_match_ratio(constraint_terms, paper_text) if constraint_terms else 0.5
     conflicts: List[str] = []
     if constraint_terms and constraint_match < 0.3:
-        conflicts.append("用户明确给了技术约束，但该论文在方法/模型/数据集相关证据上较弱。")
+        conflicts.append(
+            "The user specified technical constraints, but the paper shows weak evidence on method/model/dataset alignment."
+        )
 
     paper_type_match, paper_type_conflicts = compute_paper_type_match(intent_frame, paper_type)
     conflicts.extend(paper_type_conflicts)
@@ -1283,19 +1615,19 @@ def ensure_ranking_reasons(
         top_snippet = snippets[0]
         return [
             clean_text(
-                f"召回证据来自 `{top_snippet.get('field', '')}`：{top_snippet.get('snippet', '')[:120]}"
+                f"Evidence from `{top_snippet.get('field', '')}`: {top_snippet.get('snippet', '')[:120]}"
             )
         ]
 
     intent_terms = clean_string_list(evidence_pack.get("intent_alignment_candidates", []), limit=3)
     if intent_terms:
-        return ["命中了关键意图词：" + "、".join(intent_terms)]
+        return ["Matched intent terms: " + "; ".join(intent_terms)]
 
     retrieval_sources = clean_string_list(rank_result.get("retrieval_sources", []), limit=3)
     if retrieval_sources:
-        return ["该结果在初始召回和融合排序阶段保持了较高相关性。"]
+        return ["The result stayed competitive across retrieval and fusion stages."]
 
-    return ["当前结果在召回与意图重排阶段保持了较高相关性。"]
+    return ["The result remains relevant after retrieval and intent-aware reranking."]
 
 
 def ensure_reason_list(reasons: Sequence[str], evidence_pack: Dict[str, Any], rank_result: Dict[str, Any]) -> List[str]:
@@ -1305,53 +1637,20 @@ def ensure_reason_list(reasons: Sequence[str], evidence_pack: Dict[str, Any], ra
     return ensure_ranking_reasons([], evidence_pack, rank_result)
 
 
-def build_fallback_query_paper_match(rank_result: Dict[str, Any], evidence_pack: Dict[str, Any], error_message: str = "") -> Dict[str, Any]:
-    matched_dimensions: List[str] = []
-    unmet_dimensions: List[str] = []
+def keep_ranked_result(intent_frame: Dict[str, Any], rank_result: Dict[str, Any]) -> bool:
+    query_match = rank_result.get("query_paper_match") or {}
+    match_score = float(query_match.get("match_score", 0.0) or 0.0)
+    main_intent_satisfied = bool(query_match.get("main_intent_satisfied"))
+    scene = clean_text(intent.get_slot(intent_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
+    exact_match_type = clean_text(rank_result.get("exact_match_type", ""))
 
-    dimension_scores = {
-        "scene_match": float(rank_result.get("scene_match", 0.0) or 0.0),
-        "topic_match": float(rank_result.get("topic_match", 0.0) or 0.0),
-        "constraint_match": float(rank_result.get("constraint_match", 0.0) or 0.0),
-        "paper_type_match": float(rank_result.get("paper_type_match", 0.0) or 0.0),
-        "time_preference_match": float(rank_result.get("time_preference_match", 0.0) or 0.0),
-        "survey_preference_match": float(rank_result.get("survey_preference_match", 0.0) or 0.0),
-    }
-    for dimension, score in dimension_scores.items():
-        if score >= 0.66:
-            matched_dimensions.append(dimension)
-        elif score <= 0.35:
-            unmet_dimensions.append(dimension)
-
-    evidence_sufficiency = clamp_score(
-        0.30
-        + 0.25 * min(len(evidence_pack.get("matched_sections", [])), 2) / 2.0
-        + 0.25 * min(len(evidence_pack.get("matched_snippets", [])), 2) / 2.0
-        + 0.20 * min(len(evidence_pack.get("intent_alignment_candidates", [])), 3) / 3.0
-    )
-    match_score = clamp_score(
-        0.58 * float(rank_result.get("intent_score", 0.0) or 0.0)
-        + 0.12 * dimension_scores["topic_match"]
-        + 0.10 * dimension_scores["constraint_match"]
-        + 0.10 * dimension_scores["paper_type_match"]
-        + 0.10 * dimension_scores["time_preference_match"]
-    )
-
-    if evidence_pack.get("constraint_conflicts"):
-        unmet_dimensions.extend(clean_string_list(evidence_pack["constraint_conflicts"], limit=2))
-
-    reason = "该结果由启发式语义匹配兜底生成，综合了意图分数与命中证据。"
-    if error_message:
-        reason = f"{reason}（LLM 解释暂不可用：{clean_text(error_message)[:120]}）"
-
-    return {
-        "main_intent_satisfied": bool(match_score >= 0.62),
-        "matched_dimensions": clean_string_list(matched_dimensions, limit=4),
-        "unmet_dimensions": clean_string_list(unmet_dimensions, limit=4),
-        "match_score": round(match_score, 6),
-        "evidence_sufficiency": round(evidence_sufficiency, 6),
-        "brief_reason": reason,
-    }
+    if main_intent_satisfied:
+        return True
+    if scene in {"author_trace", "specific_paper_lookup"}:
+        if exact_match_type in {"author_match", "title_hint"} and match_score >= 0.6:
+            return True
+        return match_score >= 0.72
+    return match_score >= 0.55
 
 
 def build_query_paper_match_messages(
@@ -1361,26 +1660,7 @@ def build_query_paper_match_messages(
 ) -> List[Dict[str, str]]:
     payload = {
         "intent_frame": intent_frame,
-        "paper": {
-            "paper_id": rank_result["paper_id"],
-            "title": rank_result["title"],
-            "authors": rank_result.get("authors_raw", ""),
-            "year_month": rank_result.get("year_month", ""),
-            "abstract": rank_result.get("abstract", ""),
-        },
-        "semantic_card": evidence_pack.get("semantic_card", {}),
-        "matched_sections": evidence_pack.get("matched_sections", []),
-        "matched_snippets": evidence_pack.get("matched_snippets", []),
-        "rank_features": {
-            "base_score": rank_result["base_score"],
-            "intent_score": rank_result["intent_score"],
-            "scene_match": rank_result["scene_match"],
-            "topic_match": rank_result["topic_match"],
-            "constraint_match": rank_result["constraint_match"],
-            "paper_type_match": rank_result["paper_type_match"],
-            "time_preference_match": rank_result["time_preference_match"],
-            "survey_preference_match": rank_result["survey_preference_match"],
-        },
+        "paper": build_query_paper_match_paper_payload(evidence_pack, rank_result),
     }
     return [
         {"role": "system", "content": EXPLANATION_SYSTEM_PROMPT},
@@ -1394,16 +1674,13 @@ def generate_query_paper_match(
     rank_result: Dict[str, Any],
 ) -> Tuple[Dict[str, Any], Optional[str]]:
     if not can_use_openai():
-        raise OpenAIAPIError(f"核心语义能力不可用：query-paper 匹配依赖 LLM。{OPENAI_RUNTIME_MESSAGE}")
+        raise OpenAIAPIError(
+            f"LLM query-paper match is required, but the LLM runtime is unavailable: {OPENAI_RUNTIME_MESSAGE}"
+        )
 
-    cache_path = query_match_cache_path(intent_frame, rank_result["paper_id"])
-    if cache_path.exists():
-        try:
-            cached_payload = json.loads(cache_path.read_text(encoding="utf-8"))
-            normalized_payload = normalize_query_paper_match_payload(cached_payload["query_paper_match"])
-            return normalized_payload, cached_payload.get("used_model")
-        except Exception:
-            pass
+    cached_result = load_cached_query_paper_match(intent_frame, rank_result["paper_id"])
+    if cached_result is not None:
+        return cached_result
 
     try:
         raw_payload, used_model = structured_chat_completion(
@@ -1425,11 +1702,85 @@ def generate_query_paper_match(
                 "error": str(exc),
             }
         )
-        raise OpenAIAPIError(f"核心语义能力不可用：为 {rank_result.get('paper_id')} 生成 query-paper 匹配评分失败。{exc}") from exc
+        raise OpenAIAPIError(
+            f"LLM query-paper match failed for {rank_result.get('paper_id')}: {exc}"
+        ) from exc
 
     payload = normalize_query_paper_match_payload(raw_payload)
-    write_json(cache_path, {"used_model": used_model, "query_paper_match": payload})
+    write_cached_query_paper_match(
+        intent_frame,
+        rank_result["paper_id"],
+        payload,
+        used_model,
+        generator="llm_query_paper_match",
+    )
     return payload, used_model
+
+
+def build_query_paper_match_batch_messages(
+    intent_frame: Dict[str, Any],
+    batch_items: Sequence[Dict[str, Any]],
+    evidence_packs: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, str]]:
+    payload = {
+        "intent_frame": intent_frame,
+        "papers": [
+            build_query_paper_match_paper_payload(evidence_packs[item["paper_id"]], item)
+            for item in batch_items
+        ],
+    }
+    return [
+        {"role": "system", "content": EXPLANATION_BATCH_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+    ]
+
+
+def generate_query_paper_match_batch(
+    intent_frame: Dict[str, Any],
+    batch_items: Sequence[Dict[str, Any]],
+    evidence_packs: Dict[str, Dict[str, Any]],
+) -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+    if not batch_items:
+        return {}, None
+    if not can_use_openai():
+        raise OpenAIAPIError(
+            f"LLM query-paper match is required, but the LLM runtime is unavailable: {OPENAI_RUNTIME_MESSAGE}"
+        )
+
+    expected_paper_ids = [item["paper_id"] for item in batch_items]
+    try:
+        raw_payload, used_model = structured_chat_completion(
+            messages=build_query_paper_match_batch_messages(intent_frame, batch_items, evidence_packs),
+            schema_name="query_paper_match_batch",
+            schema=build_query_paper_match_batch_schema(len(batch_items)),
+            model=OPENAI_MODEL,
+            temperature=0.1,
+            max_tokens=max(1200, 420 * len(batch_items)),
+            timeout=150,
+            api_key=OPENAI_API_KEY,
+        )
+        normalized_results = normalize_query_paper_match_batch_payload(raw_payload, expected_paper_ids)
+    except Exception as exc:
+        append_error_log(
+            {
+                "stage": "query_paper_match_batch",
+                "paper_ids": expected_paper_ids,
+                "error": str(exc),
+            }
+        )
+        raise OpenAIAPIError(
+            "LLM query-paper match batch failed for: " + ", ".join(expected_paper_ids[:5]) + f" | {exc}"
+        ) from exc
+
+    for paper_id, payload in normalized_results.items():
+        write_cached_query_paper_match(
+            intent_frame,
+            paper_id,
+            payload,
+            used_model,
+            generator="llm_query_paper_match_batch",
+        )
+    return normalized_results, used_model
 
 
 def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1476,7 +1827,7 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
         if avg_topic >= 0.5:
             matched_dimensions.append("topic_match")
         else:
-            evidence_gap.append("top-K 在主题维度上的集中度仍然偏弱。")
+            evidence_gap.append("Top-K results are still not concentrated enough on the requested topic.")
 
         confirmed_constraints = [
             path_name
@@ -1488,37 +1839,37 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
             if avg_constraint >= 0.45:
                 matched_dimensions.append("constraint_match")
             else:
-                evidence_gap.append("top-K 对方法 / 模型 / 数据集等技术约束的覆盖还不够稳定。")
+                evidence_gap.append("Technical constraints are not covered consistently enough in the current Top-K.")
 
         requested_paper_type = intent.get_slot(intent_frame, intent.SLOT_SPECS["document_attributes.paper_type"]["path"])
         if requested_paper_type["status"] == "confirmed":
             if paper_type_hits >= max(2, len(top_slice) // 3):
                 matched_dimensions.append("paper_type_match")
             else:
-                evidence_gap.append("top-K 中符合目标论文类型的论文比例仍然偏低。")
+                evidence_gap.append("The requested paper type is still underrepresented in Top-K.")
 
         prefer_survey = intent.get_slot(intent_frame, intent.SLOT_SPECS["result_preferences.prefer_survey"]["path"])
         if prefer_survey["status"] == "confirmed" and prefer_survey["value"] == "yes" and survey_hits == 0:
-            evidence_gap.append("用户偏好综述，但当前 top-K 中没有 survey。")
+            evidence_gap.append("The user prefers surveys, but no survey appears in the current Top-K.")
 
         if match_scores and sum(match_scores) / len(match_scores) < 0.55:
-            evidence_gap.append("当前 top 结果的 query-paper 匹配分仍然偏弱。")
+            evidence_gap.append("LLM query-paper match scores remain weak for the current Top-K.")
         matched_dimensions.extend(llm_matched_dimensions[:3])
         evidence_gap.extend(llm_unmet_dimensions[:2])
 
     if missing_slots:
-        why_broad.append("用户意图仍有缺失槽位，导致召回和重排需要保持较宽覆盖。")
-        improvements.append("优先补充以下缺失信息：" + "、".join(missing_slots[:6]))
+        why_broad.append("Some intent slots are still missing, so retrieval and reranking must stay broad.")
+        improvements.append("Answer the missing slots first: " + "; ".join(missing_slots[:6]))
     if ambiguous_dimensions:
-        why_broad.append("部分槽位被标记为 ambiguous，系统默认不会继续追问这些维度。")
+        why_broad.append("Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.")
     if evidence_gap:
         why_broad.extend(evidence_gap[:2])
 
     if not improvements:
         if evidence_gap:
-            improvements.append("优先补充方法、论文类型或标题线索，可显著收窄结果。")
+            improvements.append("Add method, paper type, or a stronger title/entity hint to narrow the results further.")
         else:
-            improvements.append("当前结果已较集中，可直接查看 top-K 解释。")
+            improvements.append("Current results are already concentrated enough to inspect Top-K directly.")
 
     return {
         "query_gap": localize_user_label_list(missing_slots, limit=6),
@@ -1548,13 +1899,9 @@ def rerank_candidates(
         limit=12,
     )
     shared_intent_terms = collect_intent_terms(intent_frame)
-    need_explainable_slot = intent.get_slot(
-        intent_frame,
-        intent.SLOT_SPECS["result_preferences.need_explainable_reason"]["path"],
-    )
-    llm_explain_enabled = need_explainable_slot.get("value") == "yes"
-    if llm_explain_enabled and not can_use_openai():
-        llm_explain_enabled = False
+    llm_explain_enabled = can_use_openai()
+    if not llm_explain_enabled:
+        raise OpenAIAPIError(f"LLM-led ranking is required, but query-paper match is unavailable: {OPENAI_RUNTIME_MESSAGE}")
 
     for candidate in candidate_pool:
         row = paper_rows[candidate["paper_id"]]
@@ -1611,8 +1958,13 @@ def rerank_candidates(
         key=lambda item: (-item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
     )
 
-    # Limit expensive LLM matching to the slice that can affect final UI output.
-    llm_match_limit = min(len(ranked), max(top_k, explain_limit, 3))
+    # Let LLM inspect a focused slice by default, then widen only when
+    # preliminary scores remain tightly packed near the shortlist boundary.
+    llm_match_limit = compute_llm_match_limit(
+        ranked,
+        top_k=top_k,
+        explain_limit=explain_limit,
+    )
     shortlisted = ranked[:llm_match_limit]
     missing_semantic_card_ids = [
         item["paper_id"]
@@ -1671,15 +2023,30 @@ def rerank_candidates(
         key=lambda item: (-item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
     )
 
-    if llm_explain_enabled:
-        shortlisted_ids = [item["paper_id"] for item in shortlisted]
-        missing_section_ids = [paper_id for paper_id in shortlisted_ids if paper_id not in sections_by_paper]
+    match_results: Dict[str, Dict[str, Any]] = {}
+    match_failures: List[str] = []
+    if shortlisted and llm_explain_enabled:
+        pending_items: List[Dict[str, Any]] = []
+        for item in shortlisted:
+            cached_result = load_cached_query_paper_match(intent_frame, item["paper_id"])
+            if cached_result is None:
+                pending_items.append(item)
+                continue
+            match_payload, used_model = cached_result
+            match_results[item["paper_id"]] = {
+                "match_payload": match_payload,
+                "used_model": used_model,
+                "parser_name": "llm_query_paper_match_cache",
+            }
+
+        pending_ids = [item["paper_id"] for item in pending_items]
+        missing_section_ids = [paper_id for paper_id in pending_ids if paper_id not in sections_by_paper]
         if missing_section_ids:
             with retrieval.connect_db(db_path) as conn:
                 loaded_sections = retrieval.load_sections_for_papers(conn, missing_section_ids)
             sections_by_paper.update(loaded_sections)
 
-        for item in shortlisted:
+        for item in pending_items:
             row = paper_rows.get(item["paper_id"])
             if row is None:
                 continue
@@ -1693,92 +2060,86 @@ def rerank_candidates(
                 include_section_matches=True,
             )
 
-    def resolve_query_paper_match(rank_item: Dict[str, Any]) -> Tuple[str, Dict[str, Any], Optional[str], str, str]:
-        evidence_pack = evidence_packs[rank_item["paper_id"]]
-        try:
-            match_payload, used_model = generate_query_paper_match(intent_frame, evidence_pack, rank_item)
-            return rank_item["paper_id"], match_payload, used_model, "llm_query_paper_match", ""
-        except Exception as exc:
-            error_message = str(exc)
-            fallback_payload = build_fallback_query_paper_match(rank_item, evidence_pack, error_message=error_message)
-            return (
-                rank_item["paper_id"],
-                fallback_payload,
-                None,
-                "heuristic_query_paper_match_fallback",
-                error_message,
-            )
-
-    match_results: Dict[str, Dict[str, Any]] = {}
-    if shortlisted and llm_explain_enabled:
-        workers = min(DEFAULT_EXPLANATION_WORKERS, len(shortlisted))
-        if workers <= 1:
-            for item in shortlisted:
-                paper_id, match_payload, used_model, parser_name, error_message = resolve_query_paper_match(item)
-                match_results[paper_id] = {
-                    "match_payload": match_payload,
-                    "used_model": used_model,
-                    "parser_name": parser_name,
-                    "error_message": error_message,
+        def resolve_query_paper_match_batch_items(batch_items: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+            try:
+                batch_payloads, used_model = generate_query_paper_match_batch(intent_frame, batch_items, evidence_packs)
+                return {
+                    paper_id: {
+                        "match_payload": payload,
+                        "used_model": used_model,
+                        "parser_name": "llm_query_paper_match_batch",
+                    }
+                    for paper_id, payload in batch_payloads.items()
                 }
-        else:
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                future_map = {executor.submit(resolve_query_paper_match, item): item["paper_id"] for item in shortlisted}
-                for future in as_completed(future_map):
-                    paper_id = future_map[future]
+            except Exception as batch_exc:
+                resolved: Dict[str, Dict[str, Any]] = {}
+                fallback_failures: List[str] = []
+                for rank_item in batch_items:
+                    evidence_pack = evidence_packs[rank_item["paper_id"]]
                     try:
-                        resolved = future.result()
-                    except Exception as exc:  # defensive: should not happen because worker already handles errors
-                        item = next((row for row in shortlisted if row["paper_id"] == paper_id), None)
-                        evidence_pack = evidence_packs.get(paper_id, {})
-                        fallback_payload = build_fallback_query_paper_match(item or {"paper_id": paper_id}, evidence_pack, error_message=str(exc))
-                        resolved = (paper_id, fallback_payload, None, "heuristic_query_paper_match_fallback", str(exc))
-                    resolved_paper_id, match_payload, used_model, parser_name, error_message = resolved
-                    match_results[resolved_paper_id] = {
+                        match_payload, used_model = generate_query_paper_match(intent_frame, evidence_pack, rank_item)
+                    except Exception as single_exc:
+                        fallback_failures.append(f"{rank_item['paper_id']}: {single_exc}")
+                        continue
+                    resolved[rank_item["paper_id"]] = {
                         "match_payload": match_payload,
                         "used_model": used_model,
-                        "parser_name": parser_name,
-                        "error_message": error_message,
+                        "parser_name": "llm_query_paper_match_single_fallback",
                     }
-    elif shortlisted:
-        for item in shortlisted:
-            evidence_pack = evidence_packs[item["paper_id"]]
-            match_results[item["paper_id"]] = {
-                "match_payload": build_fallback_query_paper_match(item, evidence_pack, error_message=""),
-                "used_model": None,
-                "parser_name": "heuristic_query_paper_match_fastpath",
-                "error_message": "",
-            }
+                if fallback_failures:
+                    raise OpenAIAPIError(f"{batch_exc}; single fallback failures: {'; '.join(fallback_failures[:5])}") from batch_exc
+                return resolved
+
+        pending_batches = chunk_rank_items(pending_items, DEFAULT_QUERY_MATCH_BATCH_SIZE)
+        workers = min(DEFAULT_EXPLANATION_WORKERS, len(pending_batches))
+        if workers <= 1:
+            for batch_items in pending_batches:
+                try:
+                    match_results.update(resolve_query_paper_match_batch_items(batch_items))
+                except Exception as exc:
+                    batch_ids = ", ".join(item["paper_id"] for item in batch_items[:4])
+                    match_failures.append(f"{batch_ids}: {exc}")
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                future_map = {
+                    executor.submit(resolve_query_paper_match_batch_items, batch_items): [item["paper_id"] for item in batch_items]
+                    for batch_items in pending_batches
+                }
+                for future in as_completed(future_map):
+                    batch_ids = future_map[future]
+                    try:
+                        match_results.update(future.result())
+                    except Exception as exc:
+                        match_failures.append(f"{', '.join(batch_ids[:4])}: {exc}")
+
+    if match_failures:
+        raise OpenAIAPIError(
+            "LLM query-paper match is required for ranking, but it failed for: "
+            + "; ".join(match_failures[:5])
+        )
 
     for item in shortlisted:
         evidence_pack = evidence_packs[item["paper_id"]]
-        resolved = match_results.get(item["paper_id"], {})
-        match_payload = resolved.get("match_payload") or build_fallback_query_paper_match(item, evidence_pack, error_message="missing_match_result")
+        resolved = match_results.get(item["paper_id"])
+        if not resolved:
+            raise OpenAIAPIError(f"LLM query-paper match did not return a result for {item['paper_id']}.")
+        match_payload = resolved["match_payload"]
         used_model = resolved.get("used_model")
-        parser_name = resolved.get("parser_name") or "heuristic_query_paper_match_fallback"
-        error_message = clean_text(resolved.get("error_message", ""))
-        if parser_name == "heuristic_query_paper_match_fallback":
-            append_error_log(
-                {
-                    "stage": "query_paper_match_fallback",
-                    "paper_id": item.get("paper_id"),
-                    "title": item.get("title"),
-                    "error": error_message or "fallback_without_error",
-                }
-            )
+        parser_name = resolved.get("parser_name") or "llm_query_paper_match"
         matched_dimensions = match_payload.get("matched_dimensions", [])
         reasons = []
         if match_payload.get("brief_reason"):
             reasons.append(match_payload["brief_reason"])
-        reasons.extend(f"命中维度：{dimension}" for dimension in matched_dimensions[:2])
+        reasons.extend(f"Matched dimension: {dimension}" for dimension in matched_dimensions[:2])
+        main_intent_bonus = 0.12 if match_payload["main_intent_satisfied"] else -0.10
+        main_intent_penalty = 0.08 if (not match_payload["main_intent_satisfied"] and match_payload["match_score"] < 0.65) else 0.0
         final_score = clamp_score(
-            0.20 * item["base_score"]
-            + 0.20 * item["intent_score"]
-            + 0.35 * match_payload["match_score"]
-            + 0.10 * match_payload["evidence_sufficiency"]
-            + 0.10 * item["paper_type_match"]
-            + 0.05 * item["time_preference_match"]
-            + (0.03 if match_payload["main_intent_satisfied"] else 0.0),
+            0.04 * item["base_score"]
+            + 0.06 * item["intent_score"]
+            + 0.62 * match_payload["match_score"]
+            + 0.18 * match_payload["evidence_sufficiency"]
+            + main_intent_bonus
+            - main_intent_penalty,
             maximum=1.0,
         )
         item["query_paper_match"] = match_payload
@@ -1793,8 +2154,36 @@ def rerank_candidates(
         item["explanation_adjustment"] = round(final_score - item["preliminary_score"], 6)
 
     shortlisted.sort(key=lambda item: (-item["final_score"], -item["intent_score"], -item["base_score"], item["title"]))
-    top_items = shortlisted[:top_k]
+    filtered_items = [item for item in shortlisted if keep_ranked_result(intent_frame, item)]
+    top_items = filtered_items[:top_k]
     top_ids = {item["paper_id"] for item in top_items}
+    top_missing_section_ids = [
+        paper_id
+        for paper_id in top_ids
+        if paper_id not in sections_by_paper
+        or not evidence_packs.get(paper_id, {}).get("section_matches_included")
+    ]
+    if top_missing_section_ids:
+        unresolved_ids = [paper_id for paper_id in top_missing_section_ids if paper_id not in sections_by_paper]
+        if unresolved_ids:
+            with retrieval.connect_db(db_path) as conn:
+                loaded_sections = retrieval.load_sections_for_papers(conn, unresolved_ids)
+            sections_by_paper.update(loaded_sections)
+
+        for paper_id in top_missing_section_ids:
+            row = paper_rows.get(paper_id)
+            item = ranked_by_paper_id.get(paper_id)
+            if row is None or item is None:
+                continue
+            evidence_packs[paper_id] = build_paper_evidence_pack(
+                item,
+                row,
+                sections_by_paper.get(paper_id, []),
+                intent_frame,
+                query_texts=shared_query_texts,
+                intent_terms=shared_intent_terms,
+                include_section_matches=True,
+            )
     return top_items, {paper_id: evidence_packs[paper_id] for paper_id in top_ids}
 
 
@@ -1825,7 +2214,7 @@ def evaluate_clarification_focus(final_frame: Dict[str, Any], spec: Dict[str, An
             "clarification_needed": bool(final_frame.get("clarification_needed")),
             "checks": [],
             "pass": True,
-            "note": "未配置追问焦点断言，跳过该项校验。",
+            "note": "No clarification focus was configured for this spec; skipped.",
         }
 
     checks = []
@@ -1860,7 +2249,7 @@ def evaluate_top_result_type(top_result: Optional[Dict[str, Any]], spec: Dict[st
             "expected_top_result_type": expected_type,
             "actual_top_result_type": "",
             "pass": False,
-            "reason": "没有返回 top 结果。",
+            "reason": "No top result was returned.",
         }
 
     actual_paper_type = clean_text(top_result.get("paper_type", ""))
@@ -1886,6 +2275,66 @@ def evaluate_top_result_type(top_result: Optional[Dict[str, Any]], spec: Dict[st
         "paper_id": top_result.get("paper_id", ""),
         "title": top_result.get("title", ""),
         "pass": passed,
+    }
+
+
+def evaluate_top_3_quality(top_results: Sequence[Dict[str, Any]], spec: Dict[str, Any]) -> Dict[str, Any]:
+    inspected = list(top_results[:3])
+    expected_type = clean_text(spec.get("expected_top_result_type", ""))
+    if not inspected:
+        return {
+            "inspected_count": 0,
+            "average_match_score": 0.0,
+            "strong_match_count": 0,
+            "theme_drift_count": 0,
+            "pass": False,
+            "reason": "No top-3 results were returned.",
+            "items": [],
+        }
+
+    required_strong = 1 if expected_type in {"author_trace", "specific_paper_lookup"} else min(2, len(inspected))
+    min_average_match = 0.45 if required_strong == 1 else 0.58
+    max_theme_drift = max(0, len(inspected) - required_strong)
+
+    strong_match_count = 0
+    theme_drift_count = 0
+    total_match = 0.0
+    items: List[Dict[str, Any]] = []
+    for item in inspected:
+        query_match = item.get("query_paper_match") or {}
+        match_score = float(query_match.get("match_score", 0.0) or 0.0)
+        main_intent_satisfied = bool(query_match.get("main_intent_satisfied"))
+        strong_match = main_intent_satisfied or match_score >= 0.55
+        theme_drift = (not main_intent_satisfied and match_score < 0.55) or match_score < 0.4
+        strong_match_count += 1 if strong_match else 0
+        theme_drift_count += 1 if theme_drift else 0
+        total_match += match_score
+        items.append(
+            {
+                "paper_id": item.get("paper_id", ""),
+                "title": item.get("title", ""),
+                "paper_type": item.get("paper_type", ""),
+                "match_score": round(match_score, 6),
+                "main_intent_satisfied": main_intent_satisfied,
+                "theme_drift": theme_drift,
+            }
+        )
+
+    average_match_score = total_match / len(inspected)
+    passed = (
+        strong_match_count >= required_strong
+        and average_match_score >= min_average_match
+        and theme_drift_count <= max_theme_drift
+    )
+    return {
+        "inspected_count": len(inspected),
+        "average_match_score": round(average_match_score, 6),
+        "required_strong_match_count": required_strong,
+        "strong_match_count": strong_match_count,
+        "max_theme_drift": max_theme_drift,
+        "theme_drift_count": theme_drift_count,
+        "pass": passed,
+        "items": items,
     }
 
 
@@ -1965,6 +2414,7 @@ def build_regression_report(
         run = run_map.get(key, {})
         final_frame = run.get("final_intent_frame", {})
         top_result = (run.get("top_k_results") or [None])[0]
+        top_3_quality_check = evaluate_top_3_quality(run.get("top_k_results", []), spec)
         intent_slot_checks = evaluate_intent_slot_checks(final_frame, spec)
         clarification_check = evaluate_clarification_focus(final_frame, spec)
         top_result_type_check = evaluate_top_result_type(top_result, spec)
@@ -1972,6 +2422,7 @@ def build_regression_report(
             all(item["pass"] for item in intent_slot_checks)
             and clarification_check["pass"]
             and top_result_type_check["pass"]
+            and top_3_quality_check["pass"]
         )
         query_reports.append(
             {
@@ -1983,6 +2434,7 @@ def build_regression_report(
                 "intent_slot_checks": intent_slot_checks,
                 "clarification_check": clarification_check,
                 "top_result_type_check": top_result_type_check,
+                "top_3_quality_check": top_3_quality_check,
                 "top_result_title": top_result.get("title", "") if top_result else "",
                 "top_result_score": top_result.get("final_score", 0.0) if top_result else 0.0,
                 "pass": overall_pass,
@@ -2002,39 +2454,161 @@ def build_regression_report(
 
 def build_demo_walkthrough(specs: Sequence[Dict[str, Any]]) -> str:
     lines = [
-        "# 核心链路演示说明",
+        "# Core Chain Walkthrough",
         "",
-        "## 固定链路",
-        "`query -> IntentFrame -> 聚合追问 -> hybrid recall -> evidence pack -> query-paper match -> gap report -> top-K explanation`",
+        "## Fixed Pipeline",
+        "`query -> IntentFrame -> follow-up merge -> hybrid recall -> evidence pack -> query-paper match -> gap report -> top-K explanation`",
         "",
-        "## 关键输出文件",
-        f"- 标准查询集：`{relative_to_project(STANDARD_QUERIES_PATH)}`",
-        f"- 演示结果：`{relative_to_project(CHAIN_DEMOS_PATH)}`",
-        f"- gap 报告：`{relative_to_project(GAP_REPORTS_PATH)}`",
-        f"- 排序评估：`{relative_to_project(RANK_RESULTS_PATH)}`",
-        f"- 解释样例：`{relative_to_project(EXPLANATION_SAMPLES_PATH)}`",
-        f"- 回归报告：`{relative_to_project(REGRESSION_REPORT_PATH)}`",
+        "## Key Output Files",
+        f"- Standard queries: `{relative_to_project(STANDARD_QUERIES_PATH)}`",
+        f"- Demo runs: `{relative_to_project(CHAIN_DEMOS_PATH)}`",
+        f"- Gap reports: `{relative_to_project(GAP_REPORTS_PATH)}`",
+        f"- Ranking eval: `{relative_to_project(RANK_RESULTS_PATH)}`",
+        f"- Explanation samples: `{relative_to_project(EXPLANATION_SAMPLES_PATH)}`",
+        f"- Regression report: `{relative_to_project(REGRESSION_REPORT_PATH)}`",
         "",
-        "## 标准查询说明",
+        "## Standard Query Notes",
     ]
     for index, spec in enumerate(specs, start=1):
-        slot_summary = "；".join(
+        slot_summary = "; ".join(
             f"{localize_slot_path(path_name)}={clean_text(expected_value)}"
             for path_name, expected_value in (spec.get("expected_intent_slots") or {}).items()
-        ) or "无"
-        clarification_summary = "；".join(
+        ) or "none"
+        clarification_summary = "; ".join(
             localize_slot_path(path_name) for path_name in spec.get("expected_clarification_focus", [])
-        ) or "无需追问"
+        ) or "none"
         lines.extend(
             [
-                f"{index}. 查询：`{spec['query']}`",
-                f"   补充回复：{spec.get('follow_up_reply') or '无'}",
-                f"   预期关键槽位：{slot_summary}",
-                f"   预期追问方向：{clarification_summary}",
-                f"   预期 top 结果类型：{spec.get('expected_top_result_type') or '未指定'}",
+                f"{index}. Query: `{spec['query']}`",
+                f"   Follow-up: {spec.get('follow_up_reply') or 'none'}",
+                f"   Expected intent slots: {slot_summary}",
+                f"   Expected clarification focus: {clarification_summary}",
+                f"   Expected top result type: {spec.get('expected_top_result_type') or 'unspecified'}",
             ]
         )
     return "\n".join(lines)
+
+
+def collect_standard_query_candidate_stats(
+    db_path: Path,
+    specs: Sequence[Dict[str, Any]],
+    *,
+    candidate_pool_size: int,
+) -> Dict[str, Any]:
+    occurrence_counter: Counter[str] = Counter()
+    priority_counter: Counter[str] = Counter()
+    must_include_ids: List[str] = []
+    must_include_seen: set[str] = set()
+    query_summaries: List[Dict[str, Any]] = []
+    query_errors: List[Dict[str, Any]] = []
+
+    for spec in specs:
+        query = spec["query"]
+        follow_up_reply = spec.get("follow_up_reply")
+        try:
+            initial_frame, _, _ = intent.parse_intent_frame(query)
+            final_frame = initial_frame
+            if follow_up_reply:
+                final_frame, _, _ = intent.merge_follow_up_reply(initial_frame, follow_up_reply)
+
+            sparse_results = run_sparse_retrieval(final_frame, db_path=db_path)
+            dense_results = run_dense_retrieval(final_frame, db_path=db_path)
+            exact_results = run_exact_retrieval(final_frame, db_path=db_path)
+            candidate_pool = fuse_candidate_pool(
+                sparse_results=sparse_results,
+                dense_results=dense_results,
+                exact_results=exact_results,
+                candidate_pool_size=candidate_pool_size,
+            )
+        except Exception as exc:
+            query_errors.append(
+                {
+                    "query": query,
+                    "follow_up_reply": follow_up_reply,
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        candidate_ids = [item["paper_id"] for item in candidate_pool]
+        for rank, paper_id in enumerate(candidate_ids):
+            occurrence_counter[paper_id] += 1
+            priority_counter[paper_id] += max(1, candidate_pool_size - rank)
+
+        for paper_id in candidate_ids[:DEFAULT_STANDARD_QUERY_SEMANTIC_TOP_N]:
+            if paper_id in must_include_seen:
+                continue
+            must_include_seen.add(paper_id)
+            must_include_ids.append(paper_id)
+
+        query_summaries.append(
+            {
+                "query": query,
+                "follow_up_reply": follow_up_reply,
+                "candidate_count": len(candidate_ids),
+                "top_candidate_ids": candidate_ids[:10],
+            }
+        )
+
+    frequent_ids = [
+        paper_id
+        for paper_id, count in sorted(
+            occurrence_counter.items(),
+            key=lambda item: (-item[1], -priority_counter[item[0]], item[0]),
+        )
+        if count >= DEFAULT_STANDARD_QUERY_SEMANTIC_MIN_FREQUENCY and paper_id not in must_include_seen
+    ]
+    target_ids = must_include_ids + frequent_ids
+    return {
+        "candidate_paper_ids": target_ids,
+        "candidate_paper_count": len(target_ids),
+        "must_include_count": len(must_include_ids),
+        "frequent_candidate_count": len(frequent_ids),
+        "query_error_count": len(query_errors),
+        "query_errors": query_errors,
+        "paper_occurrences": [
+            {
+                "paper_id": paper_id,
+                "query_hit_count": occurrence_counter[paper_id],
+                "priority_score": int(priority_counter[paper_id]),
+            }
+            for paper_id in target_ids
+        ],
+        "query_summaries": query_summaries,
+    }
+
+
+def prewarm_semantic_cards_for_standard_queries(
+    db_path: Path,
+    specs: Sequence[Dict[str, Any]],
+    *,
+    candidate_pool_size: int,
+) -> Dict[str, Any]:
+    stats = collect_standard_query_candidate_stats(
+        db_path,
+        specs,
+        candidate_pool_size=candidate_pool_size,
+    )
+    target_ids = stats["candidate_paper_ids"]
+    with retrieval.connect_db(db_path) as conn:
+        before_count = semantic.current_card_count(conn)
+    if target_ids:
+        ensured_rows = ensure_semantic_cards_for_papers(db_path, target_ids)
+        ensured_ids = sorted(ensured_rows.keys())
+    else:
+        ensured_ids = []
+    with retrieval.connect_db(db_path) as conn:
+        after_count = semantic.current_card_count(conn)
+    stats.update(
+        {
+            "semantic_cards_before": before_count,
+            "semantic_cards_after": after_count,
+            "new_semantic_cards_generated": max(0, after_count - before_count),
+            "ensured_paper_count": len(ensured_ids),
+            "ensured_paper_ids": ensured_ids[:50],
+        }
+    )
+    return stats
 
 
 def run_core_chain(
@@ -2049,12 +2623,17 @@ def run_core_chain(
     stage_timings: Dict[str, float] = {}
 
     stage_start = time.perf_counter()
-    initial_frame, _, _ = intent.parse_intent_frame(query)
+    initial_frame, initial_intent_model, initial_intent_parser = intent.parse_intent_frame(query)
     stage_timings["intent_parse"] = time.perf_counter() - stage_start
     final_frame = initial_frame
+    follow_up_intent_model: Optional[str] = None
+    follow_up_intent_parser: Optional[str] = None
     if follow_up_reply:
         stage_start = time.perf_counter()
-        final_frame, _, _ = intent.merge_follow_up_reply(initial_frame, follow_up_reply)
+        final_frame, follow_up_intent_model, follow_up_intent_parser = intent.merge_follow_up_reply(
+            initial_frame,
+            follow_up_reply,
+        )
         stage_timings["intent_follow_up_merge"] = time.perf_counter() - stage_start
 
     stage_start = time.perf_counter()
@@ -2105,6 +2684,15 @@ def run_core_chain(
         "follow_up_reply": follow_up_reply,
         "initial_intent_frame": initial_frame,
         "final_intent_frame": final_frame,
+        "initial_intent_parser": initial_intent_parser,
+        "initial_intent_model": initial_intent_model,
+        "follow_up_intent_parser": follow_up_intent_parser,
+        "follow_up_intent_model": follow_up_intent_model,
+        "pipeline_mode": {
+            "intent_analysis": "llm_required",
+            "query_paper_match": "llm_required",
+            "ranking": "llm_led",
+        },
         "candidate_pool_size": len(candidate_pool),
         "sparse_results": list(sparse_results.values())[: min(20, len(sparse_results))],
         "dense_results": list(dense_results.values())[: min(20, len(dense_results))],
@@ -2126,25 +2714,25 @@ def write_chain_feedback(
     runs_with_follow_up = sum(1 for item in demo_runs if item.get("follow_up_reply"))
     content = "\n".join(
         [
-            "核心链路构建完成",
+            "鏍稿績閾捐矾鏋勫缓瀹屾垚",
             "",
-            "运行信息",
-            f"- 数据库文件: {db_path}",
-            f"- OpenAI 可用: {openai_available}",
-            f"- OpenAI 状态说明: {openai_message}",
-            f"- 演示 query 数量: {len(demo_runs)}",
-            f"- 带 follow-up 的演示数量: {runs_with_follow_up}",
-            f"- 首轮需要追问的演示数量: {clarification_runs}",
+            "杩愯淇℃伅",
+            f"- 鏁版嵁搴撴枃浠? {db_path}",
+            f"- OpenAI 鍙敤: {openai_available}",
+            f"- OpenAI 鐘舵€佽鏄? {openai_message}",
+            f"- 婕旂ず query 鏁伴噺: {len(demo_runs)}",
+            f"- 甯?follow-up 鐨勬紨绀烘暟閲? {runs_with_follow_up}",
+            f"- 棣栬疆闇€瑕佽拷闂殑婕旂ず鏁伴噺: {clarification_runs}",
             "",
-            "输出文件",
-            f"- 提示词: {relative_to_project(EXPLANATION_PROMPT_PATH)}",
-            f"- 演示结果: {relative_to_project(CHAIN_DEMOS_PATH)}",
-            f"- gap 报告: {relative_to_project(GAP_REPORTS_PATH)}",
-            f"- 排序评估: {relative_to_project(RANK_RESULTS_PATH)}",
-            f"- 解释样例: {relative_to_project(EXPLANATION_SAMPLES_PATH)}",
-            f"- 标准查询: {relative_to_project(STANDARD_QUERIES_PATH)}",
-            f"- 回归报告: {relative_to_project(REGRESSION_REPORT_PATH)}",
-            f"- 演示说明: {relative_to_project(DEMO_WALKTHROUGH_PATH)}",
+            "杈撳嚭鏂囦欢",
+            f"- 鎻愮ず璇? {relative_to_project(EXPLANATION_PROMPT_PATH)}",
+            f"- 婕旂ず缁撴灉: {relative_to_project(CHAIN_DEMOS_PATH)}",
+            f"- gap 鎶ュ憡: {relative_to_project(GAP_REPORTS_PATH)}",
+            f"- 鎺掑簭璇勪及: {relative_to_project(RANK_RESULTS_PATH)}",
+            f"- 瑙ｉ噴鏍蜂緥: {relative_to_project(EXPLANATION_SAMPLES_PATH)}",
+            f"- 鏍囧噯鏌ヨ: {relative_to_project(STANDARD_QUERIES_PATH)}",
+            f"- 鍥炲綊鎶ュ憡: {relative_to_project(REGRESSION_REPORT_PATH)}",
+            f"- 婕旂ず璇存槑: {relative_to_project(DEMO_WALKTHROUGH_PATH)}",
         ]
     )
     dump_text(FEEDBACK_PATH, content)
@@ -2164,6 +2752,11 @@ def build_core_chain_assets(
 
     standard_specs = list(STANDARD_QUERY_SPECS)
     demo_items = list(demos or standard_specs)
+    semantic_prewarm_summary = prewarm_semantic_cards_for_standard_queries(
+        db_path=db_path,
+        specs=demo_items,
+        candidate_pool_size=candidate_pool_size,
+    )
     demo_runs = [
         run_core_chain(
             query=item["query"],
@@ -2217,6 +2810,7 @@ def build_core_chain_assets(
         "db_path": str(db_path),
         "openai_available": openai_available,
         "openai_message": openai_message,
+        "semantic_prewarm": semantic_prewarm_summary,
         "demo_query_count": len(demo_runs),
         "standard_query_count": len(standard_specs),
         "explanation_sample_count": len(explanation_samples),

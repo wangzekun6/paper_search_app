@@ -46,7 +46,8 @@ MERGE_OUTPUT_PATH = DEMOS_DIR / "intent_frame_merge_examples.json"
 FEEDBACK_PATH = SYSTEM_OUTPUT_DIR / "eval" / "intent_feedback.txt"
 ERROR_LOG_PATH = INTENT_ERRORS_PATH
 
-PROMPT_VERSION = "intent_v1"
+PROMPT_VERSION = "intent_v2"
+INTENT_CACHE_VERSION = "intent_llm_required_v1"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 MAX_ERROR_LOG_ENTRIES = 500
@@ -489,6 +490,7 @@ Rules:
 11. missing_slots, clarification_question, and the three query groups are part of the model output itself, not placeholders for downstream rules.
 12. clarification_question must ask all still-missing key items in one turn, not one by one.
 13. Only mark a slot as missing if it is genuinely unresolved after considering the current text and any provided prior frame.
+14. Do not assume downstream heuristics will repair your output. If something is unresolved, keep it missing and express that in the clarification question.
 """
 
 USER_PROMPT_TEMPLATE = """Mode: {mode}
@@ -1240,7 +1242,31 @@ def fill_derived_slots(frame: Dict[str, Any]) -> None:
             build_slot("yes", "confirmed", "derived_from_query", 0.78),
         )
 
+    keyword_slot = get_slot(frame, SLOT_SPECS["research_topic.keywords"]["path"])
+    keywords = clean_string_list(keyword_slot.get("value", []), limit=8) if isinstance(keyword_slot.get("value"), list) else []
+    keyword_text = " ".join(value.lower() for value in keywords)
+
+    method_slot = get_slot(frame, SLOT_SPECS["technical_constraints.method"]["path"])
+    if method_slot["status"] == "missing" and any(phrase in keyword_text for phrase in ("early exit", "early-exit", "multi-exit")):
+        set_slot(
+            frame,
+            SLOT_SPECS["technical_constraints.method"]["path"],
+            build_slot("early exit", "confirmed", "derived_from_query", 0.76),
+        )
+
+    problem_slot = get_slot(frame, SLOT_SPECS["research_topic.problem"]["path"])
+    if problem_slot["status"] == "missing" and "agent memory" in keyword_text:
+        set_slot(
+            frame,
+            SLOT_SPECS["research_topic.problem"]["path"],
+            build_slot("memory mechanism", "confirmed", "derived_from_query", 0.72),
+        )
+
     search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
+    if search_scene["status"] in {"missing", "ambiguous"} or not clean_text(search_scene.get("value")):
+        set_slot(frame, SLOT_SPECS["search_scene"]["path"], infer_search_scene_from_frame(frame))
+        search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
+
     prefer_recent = get_slot(frame, SLOT_SPECS["result_preferences.prefer_recent"]["path"])
     if search_scene["value"] == "recent_progress" and prefer_recent["status"] == "missing":
         set_slot(
@@ -1420,7 +1446,11 @@ def extract_raw_query_terms(user_text: str) -> List[str]:
 
 
 def ensure_query_groups_from_user_text(frame: Dict[str, Any], user_text: str) -> Dict[str, Any]:
-    normalized = finalize_intent_frame(frame)
+    normalized = finalize_intent_frame(
+        frame,
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
     existing_query_text = " ".join(
         clean_string_list(
             normalized.get("coarse_queries", []) + normalized.get("dense_queries", []) + normalized.get("exact_queries", []),
@@ -1488,7 +1518,11 @@ def ensure_query_groups_from_user_text(frame: Dict[str, Any], user_text: str) ->
     repaired["coarse_queries"] = clean_string_list(coarse_queries, limit=5)
     repaired["dense_queries"] = clean_string_list(dense_queries, limit=5)
     repaired["exact_queries"] = clean_string_list(exact_queries, limit=5)
-    return finalize_intent_frame(repaired)
+    return finalize_intent_frame(
+        repaired,
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
 
 
 def has_meaningful_slots(frame: Dict[str, Any]) -> bool:
@@ -1506,7 +1540,12 @@ def has_meaningful_slots(frame: Dict[str, Any]) -> bool:
     return False
 
 
-def finalize_intent_frame(frame: Dict[str, Any]) -> Dict[str, Any]:
+def finalize_intent_frame(
+    frame: Dict[str, Any],
+    *,
+    allow_clarification_fallback: bool = True,
+    allow_query_fallback: bool = True,
+) -> Dict[str, Any]:
     normalized = normalize_intent_frame(frame)
     fill_derived_slots(normalized)
     computed_missing_slots, computed_answered_slots = compute_slot_lists(normalized)
@@ -1530,15 +1569,13 @@ def finalize_intent_frame(frame: Dict[str, Any]) -> Dict[str, Any]:
     fallback_clarification_needed, fallback_clarification_question = build_clarification_question(normalized)
     clarification_needed = bool(missing_slots)
     clarification_question = clean_text(normalized.get("clarification_question", "")) if clarification_needed else ""
-    if not clarification_question and clarification_needed:
+    if not clarification_question and clarification_needed and allow_clarification_fallback:
         clarification_question = fallback_clarification_question if fallback_clarification_needed else ""
 
     coarse_queries = clean_string_list(normalized.get("coarse_queries", []), limit=5)
     dense_queries = clean_string_list(normalized.get("dense_queries", []), limit=5)
     exact_queries = clean_string_list(normalized.get("exact_queries", []), limit=5)
-    if not coarse_queries and not dense_queries and not exact_queries:
-        # Exception-only guard: if model output is completely empty, fall back to minimal query variants
-        # so retrieval can still proceed. Main path still takes LLM-generated query groups directly.
+    if not coarse_queries and not dense_queries and not exact_queries and allow_query_fallback:
         fallback_coarse_queries, fallback_dense_queries, fallback_exact_queries = generate_query_variants(normalized)
         coarse_queries = fallback_coarse_queries
         dense_queries = fallback_dense_queries
@@ -1552,6 +1589,41 @@ def finalize_intent_frame(frame: Dict[str, Any]) -> Dict[str, Any]:
     normalized["dense_queries"] = clean_string_list(dense_queries, limit=5)
     normalized["exact_queries"] = clean_string_list(exact_queries, limit=5)
     return normalized
+
+
+def validate_llm_intent_frame(frame: Dict[str, Any], mode: str) -> Dict[str, Any]:
+    search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
+    if search_scene.get("status") == "missing" or not clean_text(search_scene.get("value")):
+        raise OpenAIAPIError(f"LLM IntentFrame missing `search_scene` in mode={mode}.")
+
+    if frame.get("clarification_needed") and not clean_text(frame.get("clarification_question", "")):
+        raise OpenAIAPIError(f"LLM IntentFrame marked clarification_needed but omitted clarification_question in mode={mode}.")
+
+    if not has_effective_query_groups(frame):
+        raise OpenAIAPIError(f"LLM IntentFrame omitted retrieval query groups in mode={mode}.")
+
+    return frame
+
+
+def repair_llm_intent_frame(frame: Dict[str, Any], user_text: str) -> Dict[str, Any]:
+    repaired = finalize_intent_frame(
+        frame,
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
+    if repaired.get("clarification_needed") and not clean_text(repaired.get("clarification_question", "")):
+        repaired = finalize_intent_frame(
+            repaired,
+            allow_clarification_fallback=True,
+            allow_query_fallback=False,
+        )
+    if not has_effective_query_groups(repaired):
+        repaired = ensure_query_groups_from_user_text(repaired, user_text)
+    return finalize_intent_frame(
+        repaired,
+        allow_clarification_fallback=True,
+        allow_query_fallback=False,
+    )
 
 
 def detect_slot_ambiguous(text: str, slot_keywords: Sequence[str]) -> bool:
@@ -1698,16 +1770,47 @@ def heuristic_parse_text(text: str, source: str, infer_defaults: bool = True) ->
 
 
 def merge_intent_frames(prior_frame: Dict[str, Any], delta_frame: Dict[str, Any], reply_text: str) -> Dict[str, Any]:
-    merged = copy.deepcopy(finalize_intent_frame(prior_frame))
+    return merge_intent_frames_with_policy(
+        prior_frame,
+        delta_frame,
+        reply_text,
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
+
+
+def merge_intent_frames_with_policy(
+    prior_frame: Dict[str, Any],
+    delta_frame: Dict[str, Any],
+    reply_text: str,
+    *,
+    allow_clarification_fallback: bool,
+    allow_query_fallback: bool,
+) -> Dict[str, Any]:
+    merged = copy.deepcopy(
+        finalize_intent_frame(
+            prior_frame,
+            allow_clarification_fallback=allow_clarification_fallback,
+            allow_query_fallback=allow_query_fallback,
+        )
+    )
     prior_scene_slot = get_slot(merged, SLOT_SPECS["search_scene"]["path"])
     prior_scene = clean_text(prior_scene_slot.get("value")) if prior_scene_slot.get("status") == "confirmed" else ""
-    delta = finalize_intent_frame(delta_frame)
+    delta = finalize_intent_frame(
+        delta_frame,
+        allow_clarification_fallback=allow_clarification_fallback,
+        allow_query_fallback=allow_query_fallback,
+    )
 
     if global_ambiguous_reply(reply_text):
         for path_name in list(merged.get("missing_slots", [])):
             spec = SLOT_SPECS[path_name]
             set_slot(merged, spec["path"], slot_mark_ambiguous(spec["kind"], "follow_up_reply"))
-        return finalize_intent_frame(merged)
+        return finalize_intent_frame(
+            merged,
+            allow_clarification_fallback=allow_clarification_fallback,
+            allow_query_fallback=allow_query_fallback,
+        )
 
     for path_name, spec in SLOT_SPECS.items():
         new_slot = get_slot(delta, spec["path"])
@@ -1726,7 +1829,11 @@ def merge_intent_frames(prior_frame: Dict[str, Any], delta_frame: Dict[str, Any]
             continue
         set_slot(merged, spec["path"], new_slot)
     preserve_prior_scene(merged, prior_scene)
-    return finalize_intent_frame(merged)
+    return finalize_intent_frame(
+        merged,
+        allow_clarification_fallback=allow_clarification_fallback,
+        allow_query_fallback=allow_query_fallback,
+    )
 
 
 def parse_intent_with_llm(
@@ -1741,17 +1848,18 @@ def parse_intent_with_llm(
             cached_payload = json.loads(cache_path.read_text(encoding="utf-8"))
         except Exception:
             cached_payload = None
-    if isinstance(cached_payload, dict) and isinstance(cached_payload.get("intent_frame"), dict):
-        cached_frame = finalize_intent_frame(cached_payload["intent_frame"])
-        cached_frame = apply_heuristic_slot_completion(user_text, cached_frame)
-        cached_frame = ensure_query_groups_from_user_text(cached_frame, user_text)
-        if has_effective_query_groups(cached_frame):
-            if cached_frame != cached_payload.get("intent_frame"):
-                write_json(
-                    cache_path,
-                    {"used_model": cached_payload.get("used_model") or OPENAI_MODEL, "intent_frame": cached_frame},
-                )
-            return cached_frame, cached_payload.get("used_model") or OPENAI_MODEL
+    if (
+        isinstance(cached_payload, dict)
+        and cached_payload.get("cache_version") == INTENT_CACHE_VERSION
+        and cached_payload.get("prompt_version") == PROMPT_VERSION
+        and cached_payload.get("parser") == "llm"
+        and isinstance(cached_payload.get("intent_frame"), dict)
+    ):
+        try:
+            cached_frame = repair_llm_intent_frame(cached_payload["intent_frame"], user_text)
+            return validate_llm_intent_frame(cached_frame, mode), cached_payload.get("used_model") or OPENAI_MODEL
+        except Exception:
+            cached_payload = None
 
     messages = build_messages(user_text=user_text, prior_frame=prior_frame, mode=mode)
     raw_frame, used_model = structured_chat_completion(
@@ -1765,74 +1873,76 @@ def parse_intent_with_llm(
         api_key=OPENAI_API_KEY,
     )
     if prior_frame is None:
-        final_frame = finalize_intent_frame(raw_frame)
+        final_frame = finalize_intent_frame(
+            raw_frame,
+            allow_clarification_fallback=False,
+            allow_query_fallback=False,
+        )
     else:
-        final_frame = merge_intent_frames(prior_frame, raw_frame, user_text)
-    final_frame = apply_heuristic_slot_completion(user_text, final_frame)
-    final_frame = ensure_query_groups_from_user_text(final_frame, user_text)
-    write_json(cache_path, {"used_model": used_model, "intent_frame": final_frame})
+        final_frame = merge_intent_frames_with_policy(
+            prior_frame,
+            raw_frame,
+            user_text,
+            allow_clarification_fallback=False,
+            allow_query_fallback=False,
+        )
+    final_frame = repair_llm_intent_frame(final_frame, user_text)
+    final_frame = validate_llm_intent_frame(final_frame, mode)
+    write_json(
+        cache_path,
+        {
+            "cache_version": INTENT_CACHE_VERSION,
+            "prompt_version": PROMPT_VERSION,
+            "mode": mode,
+            "parser": "llm",
+            "used_model": used_model,
+            "intent_frame": final_frame,
+        },
+    )
     return final_frame, used_model
 
 
 def parse_intent_frame(user_text: str) -> Tuple[Dict[str, Any], Optional[str], str]:
-    fast_frame = heuristic_parse_text(user_text, source="heuristic_fast_parse", infer_defaults=True)
-    fast_frame = ensure_query_groups_from_user_text(fast_frame, user_text)
-    if has_meaningful_slots(fast_frame):
-        return fast_frame, None, "heuristic_fast_parse"
-
     if not can_use_openai():
-        fallback_frame = heuristic_parse_text(user_text, source="heuristic_fallback", infer_defaults=True)
-        fallback_frame = ensure_query_groups_from_user_text(fallback_frame, user_text)
         append_error_log(
             {
                 "mode": "initial",
                 "user_text": user_text,
                 "error": OPENAI_RUNTIME_MESSAGE,
-                "parser": "heuristic_fallback",
+                "parser": "llm_required",
             }
         )
-        return fallback_frame, None, "heuristic_fallback"
+        raise OpenAIAPIError(f"意图分析必须通过 LLM 完成，但当前 LLM 不可用：{OPENAI_RUNTIME_MESSAGE}")
     try:
         frame, used_model = parse_intent_with_llm(user_text, prior_frame=None, mode="initial")
         return frame, used_model, "llm"
     except Exception as exc:
-        append_error_log({"mode": "initial", "user_text": user_text, "error": str(exc)})
-        fallback_frame = heuristic_parse_text(user_text, source="heuristic_fallback", infer_defaults=True)
-        fallback_frame = ensure_query_groups_from_user_text(fallback_frame, user_text)
-        return fallback_frame, None, "heuristic_fallback"
+        append_error_log({"mode": "initial", "user_text": user_text, "error": str(exc), "parser": "llm_required"})
+        raise OpenAIAPIError(f"LLM 意图分析失败：{exc}") from exc
 
 
 def merge_follow_up_reply(prior_frame: Dict[str, Any], reply_text: str) -> Tuple[Dict[str, Any], Optional[str], str]:
-    prior_normalized = finalize_intent_frame(prior_frame)
-    fast_delta = heuristic_parse_text(reply_text, source="follow_up_fastpath", infer_defaults=False)
-    if has_meaningful_slots(fast_delta):
-        fast_frame = merge_intent_frames(prior_normalized, fast_delta, reply_text)
-        fast_frame = ensure_query_groups_from_user_text(fast_frame, reply_text)
-        if fast_frame != prior_normalized:
-            return fast_frame, None, "heuristic_fast_merge"
-
+    prior_normalized = finalize_intent_frame(
+        prior_frame,
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
     if not can_use_openai():
-        delta = heuristic_parse_text(reply_text, source="heuristic_fallback", infer_defaults=False)
-        fallback_frame = merge_intent_frames(prior_normalized, delta, reply_text)
-        fallback_frame = ensure_query_groups_from_user_text(fallback_frame, reply_text)
         append_error_log(
             {
                 "mode": "follow_up_merge",
                 "reply_text": reply_text,
                 "error": OPENAI_RUNTIME_MESSAGE,
-                "parser": "heuristic_fallback",
+                "parser": "llm_required",
             }
         )
-        return fallback_frame, None, "heuristic_fallback"
+        raise OpenAIAPIError(f"追问意图合并必须通过 LLM 完成，但当前 LLM 不可用：{OPENAI_RUNTIME_MESSAGE}")
     try:
         frame, used_model = parse_intent_with_llm(reply_text, prior_frame=prior_normalized, mode="follow_up_merge")
         return frame, used_model, "llm"
     except Exception as exc:
-        append_error_log({"mode": "follow_up_merge", "reply_text": reply_text, "error": str(exc)})
-        delta = heuristic_parse_text(reply_text, source="heuristic_fallback", infer_defaults=False)
-        fallback_frame = merge_intent_frames(prior_normalized, delta, reply_text)
-        fallback_frame = ensure_query_groups_from_user_text(fallback_frame, reply_text)
-        return fallback_frame, None, "heuristic_fallback"
+        append_error_log({"mode": "follow_up_merge", "reply_text": reply_text, "error": str(exc), "parser": "llm_required"})
+        raise OpenAIAPIError(f"LLM 追问意图合并失败：{exc}") from exc
 
 
 def connect_db(db_path: Path) -> sqlite3.Connection:

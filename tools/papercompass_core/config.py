@@ -47,6 +47,8 @@ QUERY_MATCH_CACHE_DIR = CACHE_DIR / "query_matches"
 PROMPTS_DIR = SYSTEM_OUTPUT_DIR / "prompts"
 EVAL_DIR = SYSTEM_OUTPUT_DIR / "eval"
 DEMOS_DIR = SYSTEM_OUTPUT_DIR / "demos"
+SEMANTIC_BACKFILL_STATE_PATH = RUNTIME_DIR / "semantic_backfill_state.json"
+SEMANTIC_BACKFILL_LOG_PATH = RUNTIME_DIR / "semantic_backfill.log"
 
 SYSTEM_DB_PATH = RUNTIME_DIR / "papercompass.db"
 APP_STATE_PATH = RUNTIME_DIR / "app_state.json"

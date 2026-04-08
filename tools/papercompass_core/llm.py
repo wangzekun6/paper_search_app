@@ -15,9 +15,12 @@ import json
 import os
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
+
+from .config import PROJECT_ROOT
 
 try:
     import winreg
@@ -25,12 +28,19 @@ except ImportError:  # pragma: no cover - Windows-only fallback
     winreg = None
 
 
-DEFAULT_OPENAI_API_KEY = ""
 DEFAULT_OPENAI_API_BASE = "http://newapi.hjlyywp.com/v1"
 DEFAULT_OPENAI_MODEL_CANDIDATES = ["gpt-5.1", "gpt-5", "gpt-5-codex-mini", "gpt-5-codex"]
 TRANSIENT_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+PRIVATE_ENV_PATHS = (
+    PROJECT_ROOT / ".env",
+    PROJECT_ROOT / ".env.local",
+    PROJECT_ROOT / "tools" / ".env",
+    PROJECT_ROOT / "tools" / ".env.local",
+    PROJECT_ROOT / "tools" / "local.llm.env",
+)
 
 REQUEST_PROXIES: Optional[Dict[str, str]] = None
+PRIVATE_ENV_VALUES: Optional[Dict[str, str]] = None
 
 
 class OpenAIAPIError(RuntimeError):
@@ -59,11 +69,60 @@ def _read_windows_env(name: str) -> str:
     return ""
 
 
+def _strip_matching_quotes(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        return text[1:-1].strip()
+    return text
+
+
+def _read_private_env_file(path: Path) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except OSError:
+        return values
+
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().lstrip("\ufeff")
+        value = _strip_matching_quotes(value)
+        if key and value:
+            values[key] = value
+    return values
+
+
+def read_private_env_values() -> Dict[str, str]:
+    global PRIVATE_ENV_VALUES
+    if PRIVATE_ENV_VALUES is not None:
+        return PRIVATE_ENV_VALUES
+
+    merged: Dict[str, str] = {}
+    for path in PRIVATE_ENV_PATHS:
+        if not path.exists():
+            continue
+        for key, value in _read_private_env_file(path).items():
+            merged[key] = value
+    PRIVATE_ENV_VALUES = merged
+    return merged
+
+
 def read_env_value(*names: str, default: str = "") -> str:
+    private_values = read_private_env_values()
     for name in names:
         value = os.environ.get(name)
         if value and value.strip():
             return value.strip()
+        value = private_values.get(name, "")
+        if value:
+            return value
         value = _read_windows_env(name)
         if value:
             return value
@@ -77,7 +136,7 @@ OPENAI_API_KEY = read_env_value(
     "OPENAI_API_KEY",
     "DASHSCOPE_API_KEY",
     "API_KEY",
-    default=DEFAULT_OPENAI_API_KEY,
+    default="",
 )
 OPENAI_API_BASE = read_env_value(
     "OPENAI_API_BASE",
@@ -183,7 +242,7 @@ def get_request_proxies() -> Optional[Dict[str, str]]:
 def build_headers(api_key: str = "") -> Dict[str, str]:
     key = api_key or OPENAI_API_KEY
     if not key:
-        raise OpenAIAPIError("未提供 OpenAI API Key。")
+        raise OpenAIAPIError("未提供 OpenAI API Key。请设置环境变量，或在 tools/.env 中配置 OPENAI_API_KEY。")
 
     return {
         "Authorization": f"Bearer {key}",

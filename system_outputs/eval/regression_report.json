@@ -1,10 +1,10 @@
 {
-  "db_path": "C:\\Users\\czk30\\Desktop\\bishe2\\PaperCompass-main\\system_outputs\\runtime\\papercompass_20260407_203227.db",
+  "db_path": "C:\\Users\\czk30\\Desktop\\bishe2\\PaperCompass-main\\system_outputs\\runtime\\papercompass_20260408_160031.db",
   "openai_available": true,
-  "openai_message": "OpenAI Key 可用，模型 `qwen-plus` 返回：OK",
+  "openai_message": "OpenAI runtime available",
   "standard_query_count": 10,
-  "passed_query_count": 10,
-  "failed_query_count": 0,
+  "passed_query_count": 9,
+  "failed_query_count": 1,
   "query_reports": [
     {
       "query": "retrieval augmented generation survey",
@@ -29,7 +29,7 @@
         {
           "slot": "research_topic.task",
           "expected_value": "retrieval-augmented generation",
-          "actual_value": "knowledge-augmented text generation",
+          "actual_value": "retrieval-augmented generation",
           "actual_status": "confirmed",
           "pass": true
         },
@@ -51,17 +51,16 @@
           "technical_constraints.dataset",
           "technical_constraints.metric",
           "technical_constraints.modality",
-          "result_preferences.prefer_classic",
-          "result_preferences.prefer_diverse",
           "document_attributes.author_name",
-          "document_attributes.title_hint"
+          "result_preferences.prefer_classic",
+          "result_preferences.prefer_diverse"
         ],
         "clarification_needed": true,
         "checks": [
           {
             "slot": "document_attributes.time_range",
             "actual_status": "confirmed",
-            "actual_value": "2023–2024",
+            "actual_value": "last 2 years",
             "pass": true
           }
         ],
@@ -70,12 +69,39 @@
       "top_result_type_check": {
         "expected_top_result_type": "survey",
         "actual_top_result_type": "survey",
-        "paper_id": "2502.08826",
-        "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
+        "paper_id": "2502.06872",
+        "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
         "pass": true
       },
-      "top_result_title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-      "top_result_score": 0.832346,
+      "top_3_quality_check": {
+        "inspected_count": 2,
+        "average_match_score": 0.85,
+        "required_strong_match_count": 2,
+        "strong_match_count": 2,
+        "max_theme_drift": 0,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.06872",
+            "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+            "paper_type": "survey",
+            "match_score": 0.88,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.08826",
+            "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
+            "paper_type": "survey",
+            "match_score": 0.82,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+      "top_result_score": 0.894423,
       "pass": true
     },
     {
@@ -100,8 +126,8 @@
         {
           "slot": "research_topic.problem",
           "expected_value": "memory mechanism",
-          "actual_value": "memory mechanism",
-          "actual_status": "confirmed",
+          "actual_value": "how to build and use memory in agent systems (e.g., retrieval, storage, long-term memory)",
+          "actual_status": "ambiguous",
           "pass": true
         }
       ],
@@ -110,20 +136,17 @@
           "document_attributes.paper_type"
         ],
         "actual_missing_slots": [
-          "research_topic.domain",
-          "research_topic.task",
-          "document_attributes.paper_type",
           "technical_constraints.method",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
           "technical_constraints.modality",
+          "document_attributes.paper_type",
           "document_attributes.author_name",
-          "document_attributes.title_hint",
-          "result_preferences.prefer_classic",
           "result_preferences.prefer_survey",
           "result_preferences.prefer_diverse",
-          "result_preferences.need_explainable_reason"
+          "result_preferences.need_explainable_reason",
+          "result_preferences.prefer_classic"
         ],
         "clarification_needed": true,
         "checks": [
@@ -138,13 +161,48 @@
       },
       "top_result_type_check": {
         "expected_top_result_type": "method",
-        "actual_top_result_type": "analysis",
-        "paper_id": "2502.10420",
-        "title": "Position: Stop Acting Like Language Model Agents Are Normal Agents",
+        "actual_top_result_type": "method",
+        "paper_id": "2502.12110",
+        "title": "A-Mem: Agentic Memory for LLM Agents",
         "pass": true
       },
-      "top_result_title": "Position: Stop Acting Like Language Model Agents Are Normal Agents",
-      "top_result_score": 0.787104,
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.866667,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.12110",
+            "title": "A-Mem: Agentic Memory for LLM Agents",
+            "paper_type": "method",
+            "match_score": 0.97,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.05589",
+            "title": "On Memory Construction and Retrieval for Personalized Conversational Agents",
+            "paper_type": "method",
+            "match_score": 0.93,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.05957",
+            "title": "AutoAgent: A Fully-Automated and Zero-Code Framework for LLM Agents",
+            "paper_type": "method",
+            "match_score": 0.7,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "A-Mem: Agentic Memory for LLM Agents",
+      "top_result_score": 0.952974,
       "pass": true
     },
     {
@@ -174,14 +232,13 @@
           "research_topic.domain",
           "research_topic.task",
           "research_topic.problem",
-          "technical_constraints.method",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
           "technical_constraints.modality",
-          "document_attributes.paper_type",
           "document_attributes.time_range",
-          "document_attributes.title_hint",
+          "document_attributes.paper_type",
+          "document_attributes.author_name",
           "result_preferences.prefer_recent",
           "result_preferences.prefer_classic",
           "result_preferences.prefer_survey",
@@ -191,8 +248,8 @@
         "checks": [
           {
             "slot": "document_attributes.author_name",
-            "actual_status": "confirmed",
-            "actual_value": "MALT",
+            "actual_status": "missing",
+            "actual_value": "",
             "pass": true
           }
         ],
@@ -205,8 +262,27 @@
         "title": "MALT: Mechanistic Ablation of Lossy Translationin LLMs for a Low-Resource Language: Urdu",
         "pass": true
       },
+      "top_3_quality_check": {
+        "inspected_count": 1,
+        "average_match_score": 0.9,
+        "required_strong_match_count": 1,
+        "strong_match_count": 1,
+        "max_theme_drift": 0,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.00041",
+            "title": "MALT: Mechanistic Ablation of Lossy Translationin LLMs for a Low-Resource Language: Urdu",
+            "paper_type": "method",
+            "match_score": 0.9,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
       "top_result_title": "MALT: Mechanistic Ablation of Lossy Translationin LLMs for a Low-Resource Language: Urdu",
-      "top_result_score": 0.621,
+      "top_result_score": 0.858695,
       "pass": true
     },
     {
@@ -241,12 +317,11 @@
           "technical_constraints.dataset"
         ],
         "actual_missing_slots": [
-          "technical_constraints.model_family",
           "technical_constraints.dataset",
-          "technical_constraints.modality",
+          "document_attributes.paper_type",
           "document_attributes.author_name",
           "document_attributes.title_hint",
-          "result_preferences.prefer_classic",
+          "result_preferences.prefer_survey",
           "result_preferences.prefer_diverse",
           "result_preferences.need_explainable_reason"
         ],
@@ -264,12 +339,47 @@
       "top_result_type_check": {
         "expected_top_result_type": "method",
         "actual_top_result_type": "method",
-        "paper_id": "2502.12755",
-        "title": "Efficient Machine Translation Corpus Generation: Integrating Human-in-the-Loop Post-Editing with Large Language Models",
+        "paper_id": "2502.14429",
+        "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
         "pass": true
       },
-      "top_result_title": "Efficient Machine Translation Corpus Generation: Integrating Human-in-the-Loop Post-Editing with Large Language Models",
-      "top_result_score": 0.814583,
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.863333,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.14429",
+            "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
+            "paper_type": "method",
+            "match_score": 0.96,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.12404",
+            "title": "WMT24++: Expanding the Language Coverage of WMT24 to 55 Languages & Dialects",
+            "paper_type": "benchmark",
+            "match_score": 0.83,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.12755",
+            "title": "Efficient Machine Translation Corpus Generation: Integrating Human-in-the-Loop Post-Editing with Large Language Models",
+            "paper_type": "method",
+            "match_score": 0.8,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "Early-Exit and Instant Confidence Translation Quality Estimation",
+      "top_result_score": 0.92722,
       "pass": true
     },
     {
@@ -300,34 +410,68 @@
       "clarification_check": {
         "expected_clarification_focus": [],
         "actual_missing_slots": [
-          "research_topic.domain",
-          "document_attributes.time_range",
-          "result_preferences.prefer_recent",
-          "result_preferences.prefer_classic",
           "technical_constraints.method",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
+          "technical_constraints.modality",
+          "document_attributes.time_range",
           "document_attributes.author_name",
-          "document_attributes.title_hint",
+          "result_preferences.prefer_recent",
+          "result_preferences.prefer_classic",
           "result_preferences.prefer_diverse",
           "result_preferences.need_explainable_reason"
         ],
         "clarification_needed": true,
         "checks": [],
         "pass": true,
-        "note": "未配置追问焦点断言，跳过该项校验。"
+        "note": "No clarification focus was configured for this spec; skipped."
       },
       "top_result_type_check": {
         "expected_top_result_type": "survey",
-        "actual_top_result_type": "survey",
-        "paper_id": "2502.08826",
-        "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-        "pass": true
+        "actual_top_result_type": "method",
+        "paper_id": "2502.12665",
+        "title": "A2ATS: Retrieval-Based KV Cache Reduction via Windowed Rotary Position Embedding and Query-Aware Vector Quantization",
+        "pass": false
       },
-      "top_result_title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-      "top_result_score": 0.698512,
-      "pass": true
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.6,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.12665",
+            "title": "A2ATS: Retrieval-Based KV Cache Reduction via Windowed Rotary Position Embedding and Query-Aware Vector Quantization",
+            "paper_type": "method",
+            "match_score": 0.65,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.00791",
+            "title": "Vision-centric Token Compression in Large Language Model",
+            "paper_type": "method",
+            "match_score": 0.6,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.05589",
+            "title": "On Memory Construction and Retrieval for Personalized Conversational Agents",
+            "paper_type": "method",
+            "match_score": 0.55,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "A2ATS: Retrieval-Based KV Cache Reduction via Windowed Rotary Position Embedding and Query-Aware Vector Quantization",
+      "top_result_score": 0.453177,
+      "pass": false
     },
     {
       "query": "benchmark for large language models on reasoning",
@@ -344,7 +488,7 @@
         {
           "slot": "research_topic.task",
           "expected_value": "reasoning",
-          "actual_value": "reasoning evaluation",
+          "actual_value": "reasoning ability evaluation",
           "actual_status": "confirmed",
           "pass": true
         },
@@ -352,7 +496,7 @@
           "slot": "document_attributes.paper_type",
           "expected_value": "benchmark",
           "actual_value": "benchmark",
-          "actual_status": "confirmed",
+          "actual_status": "ambiguous",
           "pass": true
         }
       ],
@@ -361,18 +505,15 @@
           "document_attributes.time_range"
         ],
         "actual_missing_slots": [
-          "research_topic.domain",
-          "technical_constraints.dataset",
-          "document_attributes.time_range",
-          "research_topic.problem",
           "technical_constraints.method",
           "technical_constraints.metric",
-          "technical_constraints.modality",
+          "document_attributes.time_range",
           "document_attributes.author_name",
-          "document_attributes.title_hint",
+          "result_preferences.prefer_recent",
           "result_preferences.prefer_classic",
           "result_preferences.prefer_survey",
-          "result_preferences.prefer_diverse"
+          "result_preferences.prefer_diverse",
+          "result_preferences.need_explainable_reason"
         ],
         "clarification_needed": true,
         "checks": [
@@ -388,12 +529,47 @@
       "top_result_type_check": {
         "expected_top_result_type": "benchmark",
         "actual_top_result_type": "benchmark",
-        "paper_id": "2502.10454",
-        "title": "One Example Shown, Many Concepts Known!Counterexample-Driven Conceptual Reasoning in Mathematical LLMs",
+        "paper_id": "2502.06279",
+        "title": "DebateBench: A Challenging Long Context Reasoning Benchmark For Large Language Models",
         "pass": true
       },
-      "top_result_title": "One Example Shown, Many Concepts Known!Counterexample-Driven Conceptual Reasoning in Mathematical LLMs",
-      "top_result_score": 0.950171,
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.906667,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.06279",
+            "title": "DebateBench: A Challenging Long Context Reasoning Benchmark For Large Language Models",
+            "paper_type": "benchmark",
+            "match_score": 0.93,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.01100",
+            "title": "ZebraLogic: On the Scaling Limits of LLMs for Logical Reasoning",
+            "paper_type": "benchmark",
+            "match_score": 0.92,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.08680",
+            "title": "Mathematical Reasoning in Large Language Models:Assessing Logical and Arithmetic Errors across Wide Numerical Ranges",
+            "paper_type": "benchmark",
+            "match_score": 0.87,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "DebateBench: A Challenging Long Context Reasoning Benchmark For Large Language Models",
+      "top_result_score": 0.921136,
       "pass": true
     },
     {
@@ -411,7 +587,7 @@
         {
           "slot": "research_topic.domain",
           "expected_value": "multimodal NLP",
-          "actual_value": "multimodal NLP",
+          "actual_value": "multimodal AI, vision-and-language, multimodal large language models",
           "actual_status": "confirmed",
           "pass": true
         },
@@ -419,7 +595,7 @@
           "slot": "research_topic.task",
           "expected_value": "reasoning",
           "actual_value": "multimodal reasoning",
-          "actual_status": "ambiguous",
+          "actual_status": "confirmed",
           "pass": true
         }
       ],
@@ -429,8 +605,6 @@
         ],
         "actual_missing_slots": [
           "technical_constraints.method",
-          "result_preferences.prefer_recent",
-          "result_preferences.prefer_survey",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
@@ -438,7 +612,10 @@
           "document_attributes.paper_type",
           "document_attributes.author_name",
           "document_attributes.title_hint",
-          "result_preferences.prefer_classic"
+          "result_preferences.prefer_recent",
+          "result_preferences.prefer_classic",
+          "result_preferences.prefer_survey",
+          "result_preferences.need_explainable_reason"
         ],
         "clarification_needed": true,
         "checks": [
@@ -453,13 +630,48 @@
       },
       "top_result_type_check": {
         "expected_top_result_type": "method",
-        "actual_top_result_type": "survey",
-        "paper_id": "2502.08826",
-        "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
+        "actual_top_result_type": "method",
+        "paper_id": "2502.13383",
+        "title": "MM-Verify: Enhancing Multimodal Reasoning with Chain-of-Thought Verification",
         "pass": true
       },
-      "top_result_title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-      "top_result_score": 0.770765,
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.916667,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.13383",
+            "title": "MM-Verify: Enhancing Multimodal Reasoning with Chain-of-Thought Verification",
+            "paper_type": "method",
+            "match_score": 0.93,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.08859",
+            "title": "EnigmaEval:A Benchmark of Long Multimodal Reasoning Challenges",
+            "paper_type": "benchmark",
+            "match_score": 0.92,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.01081",
+            "title": "The Jumping Reasoning Curve? Tracking the Evolution of Reasoning Performance in GPT-[n] and o-[n] Models on Multimodal Puzzles",
+            "paper_type": "empirical_study",
+            "match_score": 0.9,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          }
+        ]
+      },
+      "top_result_title": "MM-Verify: Enhancing Multimodal Reasoning with Chain-of-Thought Verification",
+      "top_result_score": 0.902263,
       "pass": true
     },
     {
@@ -482,12 +694,11 @@
       "clarification_check": {
         "expected_clarification_focus": [],
         "actual_missing_slots": [
-          "research_topic.problem",
+          "technical_constraints.method",
           "technical_constraints.dataset",
           "technical_constraints.metric",
-          "technical_constraints.modality",
-          "document_attributes.author_name",
           "document_attributes.time_range",
+          "document_attributes.author_name",
           "result_preferences.prefer_recent",
           "result_preferences.prefer_classic",
           "result_preferences.prefer_diverse",
@@ -496,7 +707,7 @@
         "clarification_needed": true,
         "checks": [],
         "pass": true,
-        "note": "未配置追问焦点断言，跳过该项校验。"
+        "note": "No clarification focus was configured for this spec; skipped."
       },
       "top_result_type_check": {
         "expected_top_result_type": "specific_paper_lookup",
@@ -505,8 +716,35 @@
         "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
         "pass": true
       },
+      "top_3_quality_check": {
+        "inspected_count": 2,
+        "average_match_score": 0.85,
+        "required_strong_match_count": 1,
+        "strong_match_count": 2,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.06872",
+            "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+            "paper_type": "survey",
+            "match_score": 1.0,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.08826",
+            "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
+            "paper_type": "survey",
+            "match_score": 0.7,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          }
+        ]
+      },
       "top_result_title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
-      "top_result_score": 0.96375,
+      "top_result_score": 0.979629,
       "pass": true
     },
     {
@@ -531,8 +769,8 @@
         {
           "slot": "research_topic.task",
           "expected_value": "quality estimation",
-          "actual_value": "quality estimation",
-          "actual_status": "confirmed",
+          "actual_value": "quality estimation with early exit mechanisms",
+          "actual_status": "ambiguous",
           "pass": true
         }
       ],
@@ -541,18 +779,16 @@
           "document_attributes.time_range"
         ],
         "actual_missing_slots": [
-          "research_topic.domain",
-          "technical_constraints.modality",
-          "result_preferences.prefer_recent",
-          "result_preferences.prefer_survey",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
+          "technical_constraints.modality",
           "document_attributes.time_range",
           "document_attributes.paper_type",
           "document_attributes.author_name",
-          "document_attributes.title_hint",
+          "result_preferences.prefer_recent",
           "result_preferences.prefer_classic",
+          "result_preferences.prefer_survey",
           "result_preferences.prefer_diverse",
           "result_preferences.need_explainable_reason"
         ],
@@ -574,8 +810,43 @@
         "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
         "pass": true
       },
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.793333,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.14429",
+            "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
+            "paper_type": "method",
+            "match_score": 0.98,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.13329",
+            "title": "Language Models Can Predict Their Own Behavior",
+            "paper_type": "method",
+            "match_score": 0.7,
+            "main_intent_satisfied": true,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.11115",
+            "title": "Are Generative Models Underconfident? An Embarrassingly Simple Quality Estimation Approach",
+            "paper_type": "method",
+            "match_score": 0.7,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          }
+        ]
+      },
       "top_result_title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-      "top_result_score": 0.784537,
+      "top_result_score": 0.90476,
       "pass": true
     },
     {
@@ -594,7 +865,7 @@
         {
           "slot": "research_topic.task",
           "expected_value": "quality estimation",
-          "actual_value": "quality estimation",
+          "actual_value": "translation quality estimation (predicting translation quality without reference translations)",
           "actual_status": "confirmed",
           "pass": true
         },
@@ -612,11 +883,12 @@
           "document_attributes.time_range"
         ],
         "actual_missing_slots": [
-          "document_attributes.time_range",
+          "technical_constraints.method",
           "technical_constraints.model_family",
           "technical_constraints.dataset",
           "technical_constraints.metric",
-          "technical_constraints.modality",
+          "document_attributes.time_range",
+          "document_attributes.paper_type",
           "document_attributes.author_name",
           "document_attributes.title_hint",
           "result_preferences.prefer_recent",
@@ -648,8 +920,43 @@
         "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
         "pass": true
       },
+      "top_3_quality_check": {
+        "inspected_count": 3,
+        "average_match_score": 0.583333,
+        "required_strong_match_count": 2,
+        "strong_match_count": 3,
+        "max_theme_drift": 1,
+        "theme_drift_count": 0,
+        "pass": true,
+        "items": [
+          {
+            "paper_id": "2502.14429",
+            "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
+            "paper_type": "method",
+            "match_score": 0.62,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.11115",
+            "title": "Are Generative Models Underconfident? An Embarrassingly Simple Quality Estimation Approach",
+            "paper_type": "method",
+            "match_score": 0.55,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          },
+          {
+            "paper_id": "2502.08561",
+            "title": "Quality-Aware Decoding: Unifying Quality Estimation and Decoding",
+            "paper_type": "method",
+            "match_score": 0.58,
+            "main_intent_satisfied": false,
+            "theme_drift": false
+          }
+        ]
+      },
       "top_result_title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-      "top_result_score": 0.613143,
+      "top_result_score": 0.360245,
       "pass": true
     }
   ]

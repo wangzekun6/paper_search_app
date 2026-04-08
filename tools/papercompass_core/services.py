@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from . import chain, intent, retrieval, semantic
+from . import chain, intent, retrieval, semantic, semantic_backfill
 from .config import (
     APP_STATE_PATH,
     DATASET_DIR,
@@ -36,6 +37,7 @@ DEFAULT_QUERY_JSON_PATH = retrieval.DEFAULT_QUERY_JSON_PATH
 DEFAULT_QUERY_TEXT_PATH = retrieval.DEFAULT_QUERY_TEXT_PATH
 DEFAULT_SEMANTIC_TARGET_COUNT = semantic.DEFAULT_TARGET_COUNT
 DEFAULT_PILOT_COUNT = semantic.DEFAULT_PILOT_COUNT
+DEFAULT_SEMANTIC_BACKFILL_MODE = "standard"
 
 SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
     "basic": retrieval.search_basic,
@@ -68,6 +70,51 @@ def require_project_database(db_path: str | Path | None = None) -> Path:
     return database_path
 
 
+def extract_authors_for_display(authors_raw: str) -> List[str]:
+    text = " ".join(str(authors_raw or "").split()).strip()
+    if not text:
+        return []
+
+    sanitized = text
+    sanitized = re.sub(r"\S+@\S+", " | ", sanitized)
+    sanitized = re.sub(r"Corresponding Author:?", " | ", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\s+(?:and|&)\s+", " | ", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"[|;/]+", " | ", sanitized)
+    sanitized = re.sub(r"(?<=[a-z])(?=[A-Z])", " | ", sanitized)
+    sanitized = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " | ", sanitized)
+    sanitized = re.sub(r"(?<=\d)(?=[A-Za-z\u00C0-\u024F\u4E00-\u9FFF])", " | ", sanitized)
+
+    authors: List[str] = []
+    seen = set()
+    for chunk in sanitized.split("|"):
+        for part in re.split(r",(?=\s*[A-Z\u00C0-\u024F\u4E00-\u9FFF])", chunk):
+            candidate = re.sub(r"[\*\u2020\u2021]+", "", part)
+            candidate = " ".join(re.sub(r"\d+", "", candidate).split()).strip(" ,")
+            if not candidate:
+                continue
+            lowered = candidate.lower().strip(".")
+            if lowered in {"and", "&", "et al", "corresponding author"}:
+                continue
+            if lowered.startswith("corresponding author"):
+                continue
+            if candidate not in seen:
+                seen.add(candidate)
+                authors.append(candidate)
+
+    if authors:
+        return authors
+    return [text]
+
+
+def format_authors_for_display(authors_raw: str, max_names: int = 4) -> str:
+    authors = extract_authors_for_display(authors_raw)
+    if not authors:
+        return "-"
+    if len(authors) <= max_names:
+        return " · ".join(authors)
+    return f"{' · '.join(authors[:max_names])} · +{len(authors) - max_names}"
+
+
 def _semantic_status_counts(conn: Any) -> Dict[str, int]:
     rows = conn.execute(
         """
@@ -97,6 +144,29 @@ def load_project_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     return stats
 
 
+def restore_semantic_card_cache(
+    db_path: str | Path | None = None,
+    *,
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    database_path = require_project_database(db_path)
+    return semantic.restore_cached_semantic_cards(database_path, refresh=refresh)
+
+
+def start_semantic_backfill(
+    db_path: str | Path | None = None,
+    *,
+    mode: str = DEFAULT_SEMANTIC_BACKFILL_MODE,
+    refresh: bool = False,
+) -> Dict[str, Any]:
+    database_path = require_project_database(db_path)
+    return semantic_backfill.start_background_semantic_backfill(database_path, mode=mode, refresh=refresh)
+
+
+def get_semantic_backfill_status() -> Dict[str, Any]:
+    return semantic_backfill.get_semantic_backfill_status()
+
+
 def search_project(
     query: str,
     mode: str = "hybrid",
@@ -120,6 +190,7 @@ def build_semantic_assets(
     semantic.write_prompt_file()
     openai_available = semantic.can_use_openai()
     openai_message = semantic.OPENAI_RUNTIME_MESSAGE
+    cache_restore = semantic.restore_cached_semantic_cards(database_path, refresh=False)
 
     with retrieval.connect_db(database_path) as conn:
         if pilot_count > 0:
@@ -137,6 +208,12 @@ def build_semantic_assets(
         quality_payload = semantic.write_quality_check(conn, sample_size=semantic.DEFAULT_QUALITY_SAMPLE_SIZE)
         stability_payload = semantic.write_field_stability_report(semantic.load_generated_cards(conn))
         status_counts = _semantic_status_counts(conn)
+
+    standard_query_prewarm = chain.prewarm_semantic_cards_for_standard_queries(
+        database_path,
+        chain.STANDARD_QUERY_SPECS,
+        candidate_pool_size=chain.DEFAULT_CANDIDATE_POOL_SIZE,
+    )
 
     semantic.write_cache_strategy()
     semantic.write_feedback(
@@ -157,6 +234,8 @@ def build_semantic_assets(
         "status_counts": status_counts,
         "openai_available": openai_available,
         "openai_message": openai_message,
+        "cache_restore": cache_restore,
+        "standard_query_semantic_prewarm": standard_query_prewarm,
     }
 
 
@@ -169,6 +248,8 @@ def build_project(
     semantic_target_count: int = DEFAULT_SEMANTIC_TARGET_COUNT,
     pilot_count: int = DEFAULT_PILOT_COUNT,
     refresh_semantic_cards: bool = False,
+    auto_semantic_backfill: bool = True,
+    semantic_backfill_mode: str = DEFAULT_SEMANTIC_BACKFILL_MODE,
 ) -> Dict[str, Any]:
     ensure_system_layout()
     data_root_path = resolve_dataset_root(data_root)
@@ -184,6 +265,7 @@ def build_project(
         runtime_backup = retrieval.backup_runtime_tables(active_db_path)
         with retrieval.connect_db(database_path) as conn:
             retrieval.restore_runtime_tables(conn, runtime_backup)
+    semantic_cache_restore = semantic.restore_cached_semantic_cards(database_path, refresh=False)
     if generate_query_debug:
         query_payload = retrieval.run_debug_queries(
             db_path=database_path,
@@ -210,10 +292,19 @@ def build_project(
             refresh=refresh_semantic_cards,
         )
 
+    semantic_backfill_summary = None
+    if auto_semantic_backfill:
+        semantic_backfill_summary = semantic_backfill.start_background_semantic_backfill(
+            database_path,
+            mode=semantic_backfill_mode,
+            refresh=refresh_semantic_cards,
+        )
+
     payload = {
         "data_root": str(data_root_path.resolve()),
         "db_path": str(database_path.resolve()),
         "database_stats": database_stats,
+        "semantic_cache_restore": semantic_cache_restore,
         "query_debug_enabled": generate_query_debug,
         "query_count": query_payload["query_count"] if query_payload else 0,
         "dense_index_cache_warmed": dense_cache_warm_error == "",
@@ -221,6 +312,7 @@ def build_project(
         "dense_index_cache_warm_error": dense_cache_warm_error,
         "semantic_layer_enabled": build_semantic_layer,
         "semantic_layer": semantic_summary,
+        "semantic_backfill": semantic_backfill_summary,
     }
     merge_app_state({"last_build": payload, "runtime_db_path": str(database_path.resolve())})
     deleted_runtime_dbs = cleanup_runtime_databases(
@@ -283,6 +375,7 @@ def analyze_query_intent(
         "prior_history_id": prior_history_id,
         "parser": parser,
         "used_model": used_model,
+        "pipeline_mode": {"intent_analysis": "llm_required"},
         "intent_frame": frame,
     }
     merge_app_state({"last_intent_query": user_text, "last_intent_history_id": new_history_id})
@@ -413,6 +506,8 @@ def list_saved_papers(db_path: str | Path | None = None, limit: int = 50) -> Lis
             "paper_id": row["paper_id"],
             "title": row["title"],
             "authors_raw": row["authors_raw"],
+            "authors": extract_authors_for_display(row["authors_raw"]),
+            "authors_display": format_authors_for_display(row["authors_raw"]),
             "year_month": row["year_month"],
             "saved_at": row["saved_at"],
         }
@@ -456,9 +551,12 @@ def get_paper_detail(paper_id: str, db_path: str | Path | None = None) -> Dict[s
         "paper_id": row["paper_id"],
         "title": row["title"],
         "authors_raw": row["authors_raw"],
+        "authors": extract_authors_for_display(row["authors_raw"]),
+        "authors_display": format_authors_for_display(row["authors_raw"], max_names=8),
         "year_month": row["year_month"],
         "abstract": row["abstract"],
         "section_titles": json.loads(row["section_titles"]),
+        "section_count": len(sections),
         "semantic_card": semantic_card,
         "semantic_card_status": row["card_status"] or "",
         "sections": sections,
@@ -509,6 +607,7 @@ def build_chain_assets(
 
 def format_status_block(stats: Dict[str, int], db_path: str | Path | None = None) -> str:
     database_path = resolve_project_db_path(db_path)
+    semantic_backfill_status = get_semantic_backfill_status()
     payload = {
         "db_path": str(database_path),
         "papers": stats.get("papers", 0),
@@ -517,6 +616,8 @@ def format_status_block(stats: Dict[str, int], db_path: str | Path | None = None
         "semantic_cards": stats.get("semantic_cards", 0),
         "intent_histories": stats.get("intent_histories", 0),
         "saved_papers": stats.get("saved_papers", 0),
+        "semantic_card_cache_dir": str(semantic.SEMANTIC_CARD_CACHE_DIR),
+        "semantic_backfill": semantic_backfill_status,
         "app_state_path": str(APP_STATE_PATH),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

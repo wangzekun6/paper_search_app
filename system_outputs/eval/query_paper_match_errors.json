@@ -1,24 +1,6 @@
 [
   {
     "stage": "query_paper_match_fallback",
-    "paper_id": "2502.12110",
-    "title": "A-Mem: Agentic Memory for LLM Agents",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.13847",
-    "title": "DH-RAG: A Dynamic Historical Context-Powered Retrieval-Augmented Generation Method for Multi-Turn Dialogue",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.08896",
-    "title": "Communication is All You Need:Persuasion Dataset Construction via Multi-LLM Communication",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
     "paper_id": "2502.08820",
     "title": "Can a Single Model Master Both Multi-turn Conversations and Tool Use?CoALM: A Unified Conversational Agentic Language Model",
     "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
@@ -3018,5 +3000,35 @@
     "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
     "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。bench",
     "timestamp": "2026-04-07T19:48:48.958263+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2502.04356",
+      "2502.07855",
+      "2502.11211",
+      "2502.00681"
+    ],
+    "error": "'list' object has no attribute 'get'",
+    "timestamp": "2026-04-08T15:22:44.162660+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2502.06872",
+      "2502.08826",
+      "2502.12598",
+      "2502.03671"
+    ],
+    "error": "'list' object has no attribute 'get'",
+    "timestamp": "2026-04-08T15:22:45.039158+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2502.14271"
+    ],
+    "error": "'list' object has no attribute 'get'",
+    "timestamp": "2026-04-08T15:23:02.148895+00:00"
   }
 ]

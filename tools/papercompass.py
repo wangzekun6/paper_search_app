@@ -17,6 +17,7 @@ from papercompass_core.llm import OpenAIAPIError
 from papercompass_core.services import (
     DEFAULT_DATA_ROOT,
     DEFAULT_PILOT_COUNT,
+    DEFAULT_SEMANTIC_BACKFILL_MODE,
     DEFAULT_SEMANTIC_TARGET_COUNT,
     analyze_query_intent,
     build_chain_assets,
@@ -27,12 +28,15 @@ from papercompass_core.services import (
     generate_semantic_card_for_paper,
     get_default_db_path,
     get_paper_detail,
+    get_semantic_backfill_status,
     list_saved_papers,
     list_search_history,
     load_project_stats,
+    restore_semantic_card_cache,
     run_project_chain_session,
     save_paper,
     search_project,
+    start_semantic_backfill,
     unsave_paper,
 )
 
@@ -68,6 +72,8 @@ def parse_args() -> argparse.Namespace:
     build_parser.add_argument("--semantic-target-count", type=int, default=DEFAULT_SEMANTIC_TARGET_COUNT)
     build_parser.add_argument("--pilot-count", type=int, default=DEFAULT_PILOT_COUNT)
     build_parser.add_argument("--refresh-semantic-cards", action="store_true")
+    build_parser.add_argument("--semantic-backfill-mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
+    build_parser.add_argument("--skip-semantic-backfill", action="store_true")
 
     search_parser = subparsers.add_parser("search", help="从统一项目索引中检索论文。")
     search_parser.add_argument("query")
@@ -84,6 +90,13 @@ def parse_args() -> argparse.Namespace:
     cards_parser.add_argument("--pilot-count", type=int, default=DEFAULT_PILOT_COUNT)
     cards_parser.add_argument("--refresh", action="store_true")
     cards_parser.add_argument("--paper-id", help="只生成或刷新单篇论文的语义卡片。")
+
+    backfill_parser = subparsers.add_parser("semantic-backfill", help="启动或查看后台语义卡补全任务。")
+    backfill_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
+    backfill_parser.add_argument("--mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
+    backfill_parser.add_argument("--refresh", action="store_true")
+    backfill_parser.add_argument("--status", action="store_true")
+    backfill_parser.add_argument("--restore-cache-only", action="store_true")
 
     intent_parser = subparsers.add_parser("intent", help="将自然语言查询解析为 IntentFrame。")
     intent_parser.add_argument("text")
@@ -143,6 +156,8 @@ def run_build_command(args: argparse.Namespace) -> None:
         semantic_target_count=args.semantic_target_count,
         pilot_count=args.pilot_count,
         refresh_semantic_cards=args.refresh_semantic_cards,
+        auto_semantic_backfill=not args.skip_semantic_backfill,
+        semantic_backfill_mode=args.semantic_backfill_mode,
     )
     print_json(summary)
 
@@ -171,6 +186,16 @@ def run_cards_command(args: argparse.Namespace) -> None:
         refresh=args.refresh,
     )
     print_json(summary)
+
+
+def run_semantic_backfill_command(args: argparse.Namespace) -> None:
+    if args.status:
+        print_json(get_semantic_backfill_status())
+        return
+    if args.restore_cache_only:
+        print_json(restore_semantic_card_cache(args.db_path, refresh=args.refresh))
+        return
+    print_json(start_semantic_backfill(args.db_path, mode=args.mode, refresh=args.refresh))
 
 
 def run_intent_command(args: argparse.Namespace) -> None:
@@ -244,6 +269,8 @@ def main() -> None:
             run_status_command(args)
         elif args.command == "cards":
             run_cards_command(args)
+        elif args.command == "semantic-backfill":
+            run_semantic_backfill_command(args)
         elif args.command == "intent":
             run_intent_command(args)
         elif args.command == "intent-build":

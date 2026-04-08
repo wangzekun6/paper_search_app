@@ -1,6 +1,15 @@
 # Python cache files
 __pycache__/
 *.pyc
+.venv/
+tools/.venv/
+
+# Local private runtime config
+.env
+.env.local
+tools/.env
+tools/.env.local
+tools/local.llm.env
 
 # Local Streamlit runtime logs
 tools/streamlit_stdout.log

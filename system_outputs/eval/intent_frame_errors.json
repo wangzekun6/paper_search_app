@@ -75,5 +75,26 @@
     "error": "bench",
     "parser": "heuristic_fallback",
     "timestamp": "2026-04-07T19:48:46.918938+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "benchmark for large language models on reasoning",
+    "error": "LLM IntentFrame missing `search_scene` in mode=initial.",
+    "parser": "llm_required",
+    "timestamp": "2026-04-08T16:44:23.926835+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "benchmark for large language models on reasoning",
+    "error": "LLM IntentFrame missing `search_scene` in mode=initial.",
+    "parser": "llm_required",
+    "timestamp": "2026-04-08T16:49:16.885525+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "benchmark for large language models on reasoning",
+    "error": "LLM IntentFrame missing `search_scene` in mode=initial.",
+    "parser": "llm_required",
+    "timestamp": "2026-04-08T17:09:30.978087+00:00"
   }
 ]

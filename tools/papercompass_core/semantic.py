@@ -19,7 +19,7 @@ import json
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .config import (
     PROJECT_ROOT,
@@ -644,6 +644,97 @@ def load_existing_generated_ids(conn: Any) -> set[str]:
     return {row["paper_id"] for row in rows}
 
 
+def total_paper_count(conn: Any) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0])
+
+
+def list_missing_generated_ids(conn: Any, limit: Optional[int] = None) -> List[str]:
+    sql = f"""
+        SELECT papers.paper_id
+        FROM papers
+        LEFT JOIN paper_semantic_cards
+            ON papers.paper_id = paper_semantic_cards.paper_id
+            AND paper_semantic_cards.card_status IN ({', '.join('?' for _ in GENERATED_STATUSES)})
+        WHERE paper_semantic_cards.paper_id IS NULL
+        ORDER BY papers.year_month DESC, papers.paper_id DESC
+    """
+    params: List[Any] = list(GENERATED_STATUSES)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    return [row["paper_id"] for row in rows]
+
+
+def load_cached_semantic_card(path: Path) -> Optional[Tuple[Dict[str, Any], str]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    card_payload = payload.get("card") if isinstance(payload.get("card"), dict) else payload
+    if not isinstance(card_payload, dict):
+        return None
+    paper_id = " ".join(str(card_payload.get("paper_id", "")).split()).strip()
+    if not paper_id:
+        return None
+    card_status = " ".join(str(payload.get("status", "")).split()).strip() or "generated"
+    return card_payload, card_status
+
+
+def restore_cached_semantic_cards(
+    db_path: Path,
+    *,
+    refresh: bool = False,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
+    cache_files = sorted(SEMANTIC_CARD_CACHE_DIR.glob("*.json"))
+    summary = {
+        "db_path": str(db_path),
+        "cache_file_count": len(cache_files),
+        "paper_count": 0,
+        "imported_count": 0,
+        "skipped_existing_count": 0,
+        "skipped_missing_paper_count": 0,
+        "invalid_cache_count": 0,
+    }
+    if not cache_files or not db_path.exists():
+        return summary
+
+    with connect_db(db_path) as conn:
+        summary["paper_count"] = total_paper_count(conn)
+        existing_ids = load_existing_generated_ids(conn) if not refresh else set()
+        existing_papers = {
+            row["paper_id"] for row in conn.execute("SELECT paper_id FROM papers").fetchall()
+        }
+        for index, path in enumerate(cache_files, start=1):
+            loaded = load_cached_semantic_card(path)
+            if loaded is None:
+                summary["invalid_cache_count"] += 1
+                continue
+            card, card_status = loaded
+            paper_id = card["paper_id"]
+            if paper_id not in existing_papers:
+                summary["skipped_missing_paper_count"] += 1
+                continue
+            if not refresh and paper_id in existing_ids:
+                summary["skipped_existing_count"] += 1
+                continue
+            upsert_semantic_card(conn, card, card_status)
+            existing_ids.add(paper_id)
+            summary["imported_count"] += 1
+            if progress_callback and (index == len(cache_files) or summary["imported_count"] % 25 == 0):
+                progress_callback(
+                    {
+                        "stage": "restore_cache",
+                        "processed_cache_files": index,
+                        "imported_count": summary["imported_count"],
+                    }
+                )
+    return summary
+
+
 def load_error_log() -> List[Dict[str, Any]]:
     if not ERROR_LOG_PATH.exists():
         return []
@@ -775,6 +866,48 @@ def generate_pilot_cards(conn: Any, pilot_ids: Sequence[str], refresh: bool = Fa
         if card:
             cards.append(card)
     return cards
+
+
+def generate_cards_for_paper_ids(
+    conn: Any,
+    paper_ids: Sequence[str],
+    *,
+    refresh: bool = False,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
+    target_ids = clean_string_list(paper_ids, limit=max(len(paper_ids), 1))
+    generated_count = 0
+    error_count = 0
+    processed_count = 0
+    error_samples: List[Dict[str, str]] = []
+    total_count = len(target_ids)
+    for paper_id in target_ids:
+        processed_count += 1
+        try:
+            card, _ = generate_card_for_paper(conn, paper_id, refresh=refresh)
+            if card:
+                generated_count += 1
+        except Exception as exc:
+            error_count += 1
+            if len(error_samples) < 10:
+                error_samples.append({"paper_id": paper_id, "error": str(exc)})
+        if progress_callback and (processed_count == total_count or processed_count % 5 == 0):
+            progress_callback(
+                {
+                    "stage": "generate_cards",
+                    "processed_count": processed_count,
+                    "total_count": total_count,
+                    "generated_count": generated_count,
+                    "error_count": error_count,
+                }
+            )
+    return {
+        "requested_count": total_count,
+        "processed_count": processed_count,
+        "generated_count": generated_count,
+        "error_count": error_count,
+        "error_samples": error_samples,
+    }
 
 
 def generate_cards_until_target(conn: Any, target_count: int, refresh: bool = False) -> int:
