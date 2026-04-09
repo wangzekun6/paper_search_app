@@ -1,3 +1,10 @@
+"""
+语义卡片后台补全任务管理器。
+
+这个文件负责启动独立后台进程补全语义卡片、记录运行状态、
+维护日志文件，并向前端或 CLI 暴露任务状态查询接口。
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -23,20 +30,24 @@ BACKFILL_MODES = ("standard", "all")
 TOOLS_ROOT = Path(__file__).resolve().parents[1]
 
 
+# 统一使用 UTC 时间戳记录后台任务状态和日志。
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# 状态文件记录后台补全任务的当前进度和元信息。
 def load_semantic_backfill_state() -> Dict[str, Any]:
     return read_json(SEMANTIC_BACKFILL_STATE_PATH, {})
 
 
+# 所有状态写入都走这个函数，保证目录存在且写法一致。
 def write_semantic_backfill_state(payload: Dict[str, Any]) -> Dict[str, Any]:
     ensure_system_layout()
     write_json(SEMANTIC_BACKFILL_STATE_PATH, payload)
     return payload
 
 
+# 通过 pid 探测后台进程是否仍然存活。
 def process_is_alive(pid: Any) -> bool:
     try:
         numeric_pid = int(pid)
@@ -55,6 +66,7 @@ def process_is_alive(pid: Any) -> bool:
     return True
 
 
+# 把磁盘状态和进程实际状态合并，得到更可靠的任务视图。
 def get_semantic_backfill_status() -> Dict[str, Any]:
     state = load_semantic_backfill_state()
     if not state:
@@ -69,6 +81,7 @@ def get_semantic_backfill_status() -> Dict[str, Any]:
     return state
 
 
+# 后台任务输出统一落到日志文件，便于前端和 CLI 追踪。
 def append_log_line(message: str) -> None:
     ensure_system_layout()
     SEMANTIC_BACKFILL_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +89,7 @@ def append_log_line(message: str) -> None:
         handle.write(f"[{now_iso()}] {message.rstrip()}\n")
 
 
+# 启动一个脱离当前终端的后台进程，用于持续补全语义卡片。
 def start_background_semantic_backfill(
     db_path: Path,
     *,
@@ -143,6 +157,7 @@ def start_background_semantic_backfill(
     return {"started": True, **payload}
 
 
+# 更新运行态时保留已有字段，只覆盖发生变化的部分。
 def update_runtime_state(base_state: Dict[str, Any], **patch: Any) -> Dict[str, Any]:
     payload = dict(base_state)
     payload.update(patch)
@@ -151,6 +166,7 @@ def update_runtime_state(base_state: Dict[str, Any], **patch: Any) -> Dict[str, 
     return payload
 
 
+# 后台 worker 的实际执行入口：恢复缓存、预热标准查询并可选全量补全。
 def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: bool = False) -> Dict[str, Any]:
     resolved_db_path = db_path.resolve(strict=False)
     base_state = {
@@ -253,6 +269,7 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
     return summary
 
 
+# 提供独立命令行入口，便于直接调试后台任务。
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Background semantic-card backfill worker for PaperCompass.")
     parser.add_argument("--db-path", type=Path, default=get_active_runtime_db_path())
@@ -263,6 +280,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 脚本入口：根据命令行参数执行一次后台补全任务。
 def main() -> None:
     args = parse_args()
     if args.status:

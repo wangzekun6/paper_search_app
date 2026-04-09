@@ -1,9 +1,8 @@
 """
-Central project configuration for dataset bootstrap and runtime paths.
+项目级配置与运行时路径中心。
 
-This module merges the old dataset/bootstrap helpers and the runtime path
-definitions so the rest of the system only depends on one configuration
-surface.
+这个文件统一管理数据集位置、运行目录、缓存目录、评估输出路径以及
+运行时数据库路径，其他模块尽量只依赖这里暴露的配置入口。
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from typing import Any, Dict, List
 from urllib.request import Request, urlopen
 
 
+# 下面这组常量定义了项目根目录、默认数据集和运行产物的整体布局。
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATASET_LABEL = "arXiv 2025-02 cs.CL"
 DATASET_NAME = "arxiv_202502_cs_cl"
@@ -38,6 +38,7 @@ DATASET_RELEASE_BASE_URL = (
 )
 DATASET_ARCHIVE_CANDIDATES = (DATASET_TAR_PATH, DATASET_TAR_GZ_PATH)
 
+# 系统输出目录统一收纳运行时数据库、缓存、提示词和评估结果。
 SYSTEM_OUTPUT_DIR = PROJECT_ROOT / "system_outputs"
 RUNTIME_DIR = SYSTEM_OUTPUT_DIR / "runtime"
 CACHE_DIR = SYSTEM_OUTPUT_DIR / "cache"
@@ -79,28 +80,34 @@ DEMO_RUNS_PATH = DEMOS_DIR / "demo_runs.json"
 DEMO_WALKTHROUGH_PATH = DEMOS_DIR / "demo_walkthrough.md"
 
 
+# 对外暴露时统一把路径标准化，减少相对路径和大小写差异带来的问题。
 def _normalized_path(path: str | Path) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
 
+# 优先检查是否已经有完整压缩包可直接解压。
 def _archive_candidates() -> List[Path]:
     return [path for path in DATASET_ARCHIVE_CANDIDATES if path.exists()]
 
 
+# 兼容分片发布的数据集压缩包。
 def _split_archive_candidates() -> List[Path]:
     return sorted(BUNDLED_DATA_DIR.glob(DATASET_TAR_GZ_PART_GLOB))
 
 
+# 返回所有可能的数据集归档路径，供提示信息或检查逻辑使用。
 def dataset_archive_paths() -> List[Path]:
     return list(DATASET_ARCHIVE_CANDIDATES) + _split_archive_candidates()
 
 
+# 返回相对项目根目录的归档路径，便于输出给用户。
 def dataset_archive_relative_paths() -> List[str]:
     relative_paths = [path.relative_to(PROJECT_ROOT).as_posix() for path in DATASET_ARCHIVE_CANDIDATES]
     relative_paths.append(f"{DATASET_TAR_GZ_PART_PREFIX.relative_to(PROJECT_ROOT).as_posix()}*")
     return relative_paths
 
 
+# 实际可用的归档文件优先返回本地已存在的路径。
 def available_dataset_archive_paths() -> List[Path]:
     archives = _archive_candidates()
     if archives:
@@ -108,6 +115,7 @@ def available_dataset_archive_paths() -> List[Path]:
     return _split_archive_candidates()
 
 
+# 解压前先验证每个成员路径，避免 tar 包越界写入。
 def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
     destination_root = destination_dir.resolve(strict=False)
     destination_root_str = str(destination_root)
@@ -127,6 +135,7 @@ def _safe_extract_tar(archive_path: Path, destination_dir: Path) -> None:
         tar.extractall(path=destination_root)
 
 
+# 处理 GitHub Release 分片压缩包，先合并再解压。
 def _extract_split_archive(split_parts: List[Path], destination_dir: Path) -> None:
     if not split_parts:
         raise FileNotFoundError("No split dataset archive parts were provided for extraction.")
@@ -140,10 +149,12 @@ def _extract_split_archive(split_parts: List[Path], destination_dir: Path) -> No
         _safe_extract_tar(merged_archive, destination_dir)
 
 
+# 分片文件名统一通过这里生成，便于下载和本地查找保持一致。
 def _release_archive_part_name(index: int) -> str:
     return f"{DATASET_NAME}.tar.gz.part{index:02d}"
 
 
+# 当本地没有数据集时，从 GitHub Release 下载分片归档。
 def _download_release_split_archives() -> List[Path]:
     BUNDLED_DATA_DIR.mkdir(parents=True, exist_ok=True)
     downloaded_parts: List[Path] = []
@@ -187,6 +198,7 @@ def _download_release_split_archives() -> List[Path]:
     return downloaded_parts
 
 
+# 确保默认数据集可用；如果缺失则尝试从本地归档或远端分片恢复。
 def ensure_default_dataset_available() -> Path:
     if DATASET_DIR.exists():
         return DATASET_DIR.resolve()
@@ -219,6 +231,7 @@ def ensure_default_dataset_available() -> Path:
     return DATASET_DIR.resolve()
 
 
+# 解析数据集根目录；默认会确保打包数据集已经就绪。
 def resolve_dataset_root(data_root: str | Path = DATASET_DIR) -> Path:
     requested = _normalized_path(data_root)
     default_dataset = _normalized_path(DATASET_DIR)
@@ -229,6 +242,7 @@ def resolve_dataset_root(data_root: str | Path = DATASET_DIR) -> Path:
     raise FileNotFoundError(f"Dataset path not found: {requested}")
 
 
+# 统一初始化运行目录和缓存目录。
 def ensure_system_layout() -> None:
     for directory in (
         SYSTEM_OUTPUT_DIR,
@@ -246,6 +260,7 @@ def ensure_system_layout() -> None:
         write_json(APP_STATE_PATH, {})
 
 
+# 把绝对路径转成相对项目根目录的展示形式。
 def relative_to_project(path: Path) -> str:
     try:
         return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
@@ -253,6 +268,7 @@ def relative_to_project(path: Path) -> str:
         return str(path)
 
 
+# 读 JSON 时提供安全兜底，避免单个文件损坏影响整个流程。
 def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
@@ -262,11 +278,13 @@ def read_json(path: Path, default: Any) -> Any:
         return default
 
 
+# 写 JSON 时统一保证父目录存在并使用 UTF-8 编码。
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# 轻量运行态信息统一写入 app_state，便于前端恢复状态。
 def merge_app_state(patch: Dict[str, Any]) -> Dict[str, Any]:
     ensure_system_layout()
     state = read_json(APP_STATE_PATH, {})
@@ -275,6 +293,7 @@ def merge_app_state(patch: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
+# 当前正在使用的运行期数据库路径统一从 app_state 推断。
 def get_active_runtime_db_path() -> Path:
     ensure_system_layout()
     state = read_json(APP_STATE_PATH, {})
@@ -284,6 +303,7 @@ def get_active_runtime_db_path() -> Path:
     return SYSTEM_DB_PATH
 
 
+# 重建数据库时生成带时间戳的新路径，避免覆盖正在使用的旧库。
 def create_versioned_runtime_db_path(prefix: str = "papercompass") -> Path:
     ensure_system_layout()
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -295,6 +315,7 @@ def create_versioned_runtime_db_path(prefix: str = "papercompass") -> Path:
     return candidate
 
 
+# 清理旧版本运行库，避免 runtime 目录无限膨胀。
 def cleanup_runtime_databases(keep_latest: int = 2, protected_paths: List[Path] | None = None) -> List[str]:
     ensure_system_layout()
     protected = {path.resolve(strict=False) for path in (protected_paths or [])}
@@ -326,14 +347,17 @@ def cleanup_runtime_databases(keep_latest: int = 2, protected_paths: List[Path] 
     return deleted
 
 
+# 语义卡片缓存按 paper_id 单独落盘。
 def semantic_card_cache_path(paper_id: str) -> Path:
     return SEMANTIC_CARD_CACHE_DIR / f"{paper_id}.json"
 
 
+# 搜索历史对应的意图缓存路径。
 def intent_session_cache_path(history_id: int) -> Path:
     return INTENT_SESSION_CACHE_DIR / f"{history_id}.json"
 
 
+# 基于查询文本和上下文生成稳定的意图缓存键。
 def intent_query_cache_path(user_text: str, prior_frame: Dict[str, Any] | None = None, mode: str = "initial") -> Path:
     digest = hashlib.sha1(
         json.dumps(
@@ -349,6 +373,7 @@ def intent_query_cache_path(user_text: str, prior_frame: Dict[str, Any] | None =
     return INTENT_SESSION_CACHE_DIR / f"query_{digest[:16]}.json"
 
 
+# query-paper 匹配缓存同时绑定意图框架和论文 id。
 def query_match_cache_path(intent_frame: Dict[str, Any], paper_id: str) -> Path:
     digest = hashlib.sha1(
         json.dumps(

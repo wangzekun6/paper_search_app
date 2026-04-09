@@ -46,8 +46,8 @@ MERGE_OUTPUT_PATH = DEMOS_DIR / "intent_frame_merge_examples.json"
 FEEDBACK_PATH = SYSTEM_OUTPUT_DIR / "eval" / "intent_feedback.txt"
 ERROR_LOG_PATH = INTENT_ERRORS_PATH
 
-PROMPT_VERSION = "intent_v2"
-INTENT_CACHE_VERSION = "intent_llm_required_v1"
+PROMPT_VERSION = "intent_v3"
+INTENT_CACHE_VERSION = "intent_llm_required_v2"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 MAX_ERROR_LOG_ENTRIES = 500
@@ -187,6 +187,13 @@ LOW_SIGNAL_KEYWORD_MARKERS = [
     "推荐",
     "论文标题",
     "title",
+    "研究领域",
+    "研究任务",
+    "研究问题",
+    "时间范围",
+    "论文类型",
+    "作者是",
+    "标题是",
 ]
 KNOWN_MULTIWORD_PHRASES = [
     "retrieval augmented generation",
@@ -214,6 +221,8 @@ RAW_QUERY_TERM_TRANSLATIONS = {
     "智能体": "agent",
     "多智能体": "multi-agent",
     "多模态": "multimodal",
+    "大语言模型": "large language models",
+    "大模型": "large language models",
     "推理": "reasoning",
     "综述": "survey",
     "美国": "US",
@@ -243,14 +252,26 @@ CHINESE_SUFFIX_NOISE = [
 PAPER_TYPE_ALIASES = {
     "survey": "survey",
     "review": "survey",
+    "综述": "survey",
+    "综述论文": "survey",
     "benchmark": "benchmark",
+    "benchmark paper": "benchmark",
+    "基准": "benchmark",
+    "评测": "benchmark",
+    "基准/评测": "benchmark",
     "method": "method",
+    "方法": "method",
+    "方法论文": "method",
     "empirical study": "empirical_study",
     "empirical_study": "empirical_study",
+    "实证研究": "empirical_study",
     "application study": "application_study",
     "application_study": "application_study",
+    "应用研究": "application_study",
     "theory": "theory",
+    "理论": "theory",
     "analysis": "analysis",
+    "分析": "analysis",
 }
 PAPER_TYPE_QUERY_LABELS = {
     "survey": "survey papers",
@@ -283,53 +304,84 @@ LOW_SIGNAL_QUERY_TERMS = {
 
 DOMAIN_MAP = {
     "machine translation": "machine translation",
+    "机器翻译": "machine translation",
     "speech-to-speech translation": "speech processing",
     "speech": "speech processing",
+    "语音": "speech processing",
     "multimodal": "multimodal NLP",
+    "多模态": "multimodal NLP",
     "vision-language": "vision-language modeling",
+    "视觉语言": "vision-language modeling",
     "rag": "large language models",
+    "retrieval-augmented generation": "large language models",
     "retrieval augmented generation": "large language models",
+    "大语言模型": "large language models",
+    "大模型": "large language models",
+    "llm": "large language models",
     "tool use": "agent systems",
+    "工具使用": "agent systems",
     "scientific data visualization": "scientific visualization",
     "medical": "medicine",
+    "医疗": "medicine",
+    "医学": "medicine",
     "healthcare": "healthcare",
     "clinical": "clinical AI",
+    "临床": "clinical AI",
     "translation quality estimation": "machine translation",
 }
 TASK_MAP = {
+    "retrieval-augmented generation": "retrieval-augmented generation",
     "retrieval augmented generation": "retrieval-augmented generation",
     "rag": "retrieval-augmented generation",
+    "检索增强生成": "retrieval-augmented generation",
     "self-rag": "retrieval-augmented generation",
     "machine translation": "machine translation",
+    "机器翻译": "machine translation",
     "speech-to-speech translation": "speech-to-speech translation",
     "quality estimation": "quality estimation",
+    "质量估计": "quality estimation",
     "translation quality estimation": "quality estimation",
     "tool use": "tool use",
+    "工具使用": "tool use",
     "long context": "long-context understanding",
+    "长上下文": "long-context understanding",
     "scientific data visualization": "scientific data visualization",
     "graph-based summarization": "summarization",
+    "摘要": "summarization",
+    "总结": "summarization",
     "agent evaluation": "agent evaluation",
     "multimodal feedback": "multimodal feedback",
     "reasoning": "reasoning",
+    "推理": "reasoning",
 }
 PROBLEM_MAP = {
     "hallucination": "hallucination mitigation",
     "hallucination mitigation": "hallucination mitigation",
+    "幻觉": "hallucination mitigation",
     "long context": "long-context understanding",
+    "长上下文": "long-context understanding",
     "low-resource": "low-resource learning",
+    "低资源": "low-resource learning",
     "quality estimation": "quality estimation",
+    "质量估计": "quality estimation",
     "agent memory": "memory mechanism",
+    "记忆": "memory mechanism",
 }
 METHOD_MAP = {
     "self-rag": "self-rag",
+    "retrieval-augmented generation": "retrieval-augmented generation",
     "retrieval augmented generation": "retrieval-augmented generation",
     "rag": "retrieval-augmented generation",
+    "检索增强生成": "retrieval-augmented generation",
     "prompt engineering": "prompt engineering",
+    "提示工程": "prompt engineering",
     "graph-based": "graph-based method",
     "graph-based summarization": "graph-based summarization",
     "early exit": "early exit",
+    "早退": "early exit",
     "comet": "COMET",
     "agent": "agent architecture",
+    "智能体": "agent architecture",
     "clip": "CLIP",
     "quality estimation": "quality estimation",
 }
@@ -337,6 +389,8 @@ MODEL_MAP = {
     "llm": "large language model",
     "large language model": "large language model",
     "large language models": "large language model",
+    "大语言模型": "large language model",
+    "大模型": "large language model",
     "gpt": "GPT family",
     "bert": "BERT family",
     "t5": "T5 family",
@@ -370,6 +424,12 @@ MODALITY_MAP = {
     "image": "vision",
     "vision": "vision",
     "multimodal": "multimodal",
+    "多模态": "multimodal",
+    "文本": "text",
+    "图像": "vision",
+    "视觉": "vision",
+    "语音": "speech",
+    "视频": "video",
     "text": "text",
     "video": "video",
 }
@@ -469,6 +529,16 @@ CLARIFICATION_GROUPS = [
     },
 ]
 
+DERIVED_FRAME_FIELDS = (
+    "missing_slots",
+    "answered_slots",
+    "clarification_needed",
+    "clarification_question",
+    "coarse_queries",
+    "dense_queries",
+    "exact_queries",
+)
+
 SYSTEM_PROMPT = """You are building an IntentFrame for an academic paper retrieval system.
 
 The goal is not keyword expansion only. You must infer user intent into a fixed JSON object.
@@ -493,7 +563,19 @@ Rules:
 14. Do not assume downstream heuristics will repair your output. If something is unresolved, keep it missing and express that in the clarification question.
 """
 
-USER_PROMPT_TEMPLATE = """Mode: {mode}
+FOLLOW_UP_MODE_PROMPT = """
+Additional rules for follow_up_merge mode:
+15. The new message is a follow-up update to the previous intent, not a standalone fresh query.
+16. Return the new full IntentFrame after applying the follow-up, not only the delta.
+17. For each affected slot, decide whether the follow-up keeps, refines, overrides, or relaxes the previous value.
+18. If the follow-up explicitly conflicts with a previous constraint, the latest explicit user instruction wins.
+19. If the follow-up says a slot is unrestricted / any / no preference / 不限 / 都可以 / 不确定, do not carry the old hard constraint forward. Mark that slot ambiguous with an empty value.
+20. If the follow-up makes the topic more specific, rewrite domain/task/problem/keywords so the final frame reflects the new specificity instead of keeping a vague prior wording.
+21. Generate coarse_queries, dense_queries, and exact_queries from the final merged intent state. They should change whenever the follow-up materially changes retrieval focus or constraints.
+22. Do not silently keep an old constraint just because it existed before. Preserve it only when the follow-up leaves it unchanged.
+"""
+
+INITIAL_USER_PROMPT_TEMPLATE = """Mode: {mode}
 
 Current user text:
 {user_text}
@@ -503,7 +585,23 @@ Previous IntentFrame JSON:
 
 Return one complete IntentFrame JSON object."""
 
+FOLLOW_UP_USER_PROMPT_TEMPLATE = """Mode: {mode}
 
+Current follow-up reply:
+{user_text}
+
+Previous intent summary:
+{prior_frame_summary}
+
+Previous IntentFrame JSON:
+{prior_frame_json}
+
+Return one complete IntentFrame JSON object for the updated intent after applying the follow-up.
+Do not return only the delta.
+"""
+
+
+# 写入提示词、评估和错误日志前统一确保目录存在。
 def ensure_output_dir() -> None:
     ensure_system_layout()
 
@@ -518,6 +616,16 @@ def dump_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
 
 
+def clear_derived_frame_fields(frame: Dict[str, Any]) -> Dict[str, Any]:
+    for key in DERIVED_FRAME_FIELDS:
+        if key == "clarification_needed":
+            frame[key] = False
+        else:
+            frame[key] = [] if key.endswith("_slots") or key.endswith("_queries") else ""
+    return frame
+
+
+# 意图解析错误会集中记录，方便后续回放和修复。
 def load_error_log() -> List[Dict[str, Any]]:
     if not ERROR_LOG_PATH.exists():
         return []
@@ -537,6 +645,7 @@ def append_error_log(entry: Dict[str, Any]) -> None:
     dump_json(ERROR_LOG_PATH, errors)
 
 
+# 缓存当前大模型运行时是否可用，避免重复探测。
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
     if OPENAI_RUNTIME_AVAILABLE is not None:
@@ -580,6 +689,7 @@ def clean_string_list(values: Iterable[Any], limit: int = 8) -> List[str]:
     return items
 
 
+# 所有槽位都遵循统一结构，便于后续归一化和合并。
 def slot_template(kind: str) -> Dict[str, Any]:
     return {
         "value": [] if kind == "list" else "",
@@ -589,6 +699,7 @@ def slot_template(kind: str) -> Dict[str, Any]:
     }
 
 
+# 创建一份空白意图框架，作为首轮解析和修复的基础骨架。
 def blank_intent_frame() -> Dict[str, Any]:
     return {
         "search_scene": slot_template("string"),
@@ -735,21 +846,87 @@ INTENT_FRAME_SCHEMA: Dict[str, Any] = {
 }
 
 
+# 组装给大模型的意图解析提示消息，兼容首轮和 follow-up 两种模式。
+def format_slot_value_for_prompt(slot: Dict[str, Any]) -> str:
+    value = slot.get("value")
+    if isinstance(value, list):
+        cleaned = clean_string_list(value, limit=6)
+        return " / ".join(cleaned) if cleaned else "-"
+    text = clean_text(value)
+    return text or "-"
+
+
+def summarize_intent_frame_for_prompt(frame: Dict[str, Any]) -> str:
+    normalized = finalize_intent_frame(
+        copy.deepcopy(frame),
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
+    confirmed_lines: List[str] = []
+    ambiguous_lines: List[str] = []
+    missing_lines = clean_slot_name_list(normalized.get("missing_slots", []))
+    for path_name, slot, _ in iter_leaf_slots(normalized):
+        label = path_name
+        value_text = format_slot_value_for_prompt(slot)
+        line = f"- {label}: {value_text}"
+        if slot.get("status") == "confirmed" and value_text != "-":
+            confirmed_lines.append(line)
+        elif slot.get("status") == "ambiguous":
+            ambiguous_lines.append(line)
+    query_groups = {
+        "coarse_queries": clean_string_list(normalized.get("coarse_queries", []), limit=4),
+        "dense_queries": clean_string_list(normalized.get("dense_queries", []), limit=4),
+        "exact_queries": clean_string_list(normalized.get("exact_queries", []), limit=4),
+    }
+    sections = [
+        "Confirmed slots:",
+        "\n".join(confirmed_lines) if confirmed_lines else "- none",
+        "",
+        "Ambiguous slots:",
+        "\n".join(ambiguous_lines) if ambiguous_lines else "- none",
+        "",
+        "Missing slots:",
+        "\n".join(f"- {item}" for item in missing_lines) if missing_lines else "- none",
+        "",
+        "Current retrieval queries:",
+        "\n".join(
+            [
+                f"- coarse_queries: {' | '.join(query_groups['coarse_queries']) if query_groups['coarse_queries'] else '-'}",
+                f"- dense_queries: {' | '.join(query_groups['dense_queries']) if query_groups['dense_queries'] else '-'}",
+                f"- exact_queries: {' | '.join(query_groups['exact_queries']) if query_groups['exact_queries'] else '-'}",
+            ]
+        ),
+    ]
+    return "\n".join(sections)
+
+
 def build_messages(user_text: str, prior_frame: Optional[Dict[str, Any]] = None, mode: str = "initial") -> List[Dict[str, str]]:
     prior_frame_json = json.dumps(prior_frame or blank_intent_frame(), ensure_ascii=False, indent=2)
+    if mode == "follow_up_merge":
+        system_prompt = SYSTEM_PROMPT.rstrip() + "\n" + FOLLOW_UP_MODE_PROMPT.strip()
+        user_prompt = FOLLOW_UP_USER_PROMPT_TEMPLATE.format(
+            mode=mode,
+            user_text=user_text.strip(),
+            prior_frame_json=prior_frame_json,
+            prior_frame_summary=summarize_intent_frame_for_prompt(prior_frame or blank_intent_frame()),
+        )
+    else:
+        system_prompt = SYSTEM_PROMPT
+        user_prompt = INITIAL_USER_PROMPT_TEMPLATE.format(
+            mode=mode,
+            user_text=user_text.strip(),
+            prior_frame_json=prior_frame_json,
+        )
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {
             "role": "user",
-            "content": USER_PROMPT_TEMPLATE.format(
-                mode=mode,
-                user_text=user_text.strip(),
-                prior_frame_json=prior_frame_json,
-            ),
+            "content": user_prompt,
         },
     ]
 
 
+# 导出当前意图提示词和 schema，便于展示与归档。
 def write_prompt_file() -> None:
     content = f"""# IntentFrame Prompt
 
@@ -759,8 +936,14 @@ Model Default: {OPENAI_MODEL}
 ## System Prompt
 {SYSTEM_PROMPT}
 
-## User Prompt Template
-{USER_PROMPT_TEMPLATE}
+## Follow-up Mode Prompt
+{FOLLOW_UP_MODE_PROMPT}
+
+## Initial User Prompt Template
+{INITIAL_USER_PROMPT_TEMPLATE}
+
+## Follow-up User Prompt Template
+{FOLLOW_UP_USER_PROMPT_TEMPLATE}
 
 ## Output Schema
 ```json
@@ -770,6 +953,7 @@ Model Default: {OPENAI_MODEL}
     dump_text(PROMPT_PATH, content)
 
 
+# 统一通过路径访问槽位，避免直接层层索引造成分散逻辑。
 def get_slot(frame: Dict[str, Any], path: Tuple[str, ...]) -> Dict[str, Any]:
     node: Any = frame
     for key in path:
@@ -777,6 +961,7 @@ def get_slot(frame: Dict[str, Any], path: Tuple[str, ...]) -> Dict[str, Any]:
     return node
 
 
+# 和 get_slot 配套的写入口，保证路径更新方式一致。
 def set_slot(frame: Dict[str, Any], path: Tuple[str, ...], slot: Dict[str, Any]) -> None:
     node = frame
     for key in path[:-1]:
@@ -797,6 +982,7 @@ def normalize_enum(value: str, allowed: Sequence[str]) -> str:
     return lowered_map.get(text.lower(), "")
 
 
+# 把模型或启发式输出统一规范成标准槽位格式。
 def normalize_slot(raw_slot: Any, kind: str, allowed: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     slot = slot_template(kind)
     if isinstance(raw_slot, dict):
@@ -827,6 +1013,7 @@ def normalize_slot(raw_slot: Any, kind: str, allowed: Optional[Sequence[str]] = 
     return slot
 
 
+# 对整个 IntentFrame 做结构清洗和字段兜底。
 def normalize_intent_frame(raw_frame: Any) -> Dict[str, Any]:
     frame = blank_intent_frame()
     if not isinstance(raw_frame, dict):
@@ -889,6 +1076,7 @@ def extract_capitalized_name(text: str) -> str:
     return clean_text(match.group(1)) if match else ""
 
 
+# 从用户文本中提取作者线索，服务于 author_trace 场景。
 def extract_author_name(text: str) -> str:
     query = clean_text(text)
     patterns = [
@@ -906,6 +1094,7 @@ def extract_author_name(text: str) -> str:
     return extract_capitalized_name(query)
 
 
+# 从查询里抽取论文标题或标题片段线索。
 def extract_title_hint(text: str) -> str:
     quoted = extract_quoted_phrases(text)
     if quoted:
@@ -927,6 +1116,7 @@ def extract_title_hint(text: str) -> str:
     return ""
 
 
+# 抽取用户显式给出的时间范围，用于 recent/classic 相关偏好。
 def extract_year_range(text: str) -> str:
     query = clean_text(text)
     years = re.findall(r"\b(20\d{2})\b", query)
@@ -940,6 +1130,10 @@ def extract_year_range(text: str) -> str:
         if contains_any(lowered, ["before", "until", "之前"]):
             return f"<={year}"
         return year
+    if re.search(r"(最近|近)\s*两年", query, flags=re.IGNORECASE):
+        return "last 2 years"
+    if re.search(r"(最近|近)\s*三年", query, flags=re.IGNORECASE):
+        return "last 3 years"
     if contains_any(query, ["最近", "最新", "recent", "latest"]):
         return "recent"
     if "近两年" in query:
@@ -1048,6 +1242,7 @@ def is_low_signal_query_term(value: Any, paper_type: str = "") -> bool:
     return False
 
 
+# 过滤掉低信息量词，保留真正适合检索的关键词。
 def filter_retrieval_terms(values: Iterable[Any], paper_type: str = "", limit: int = 8) -> List[str]:
     filtered: List[str] = []
     for value in clean_string_list(values, limit=max(limit * 2, 8)):
@@ -1063,6 +1258,7 @@ def compact_query_text(values: Iterable[Any], paper_type: str = "", limit: int =
     return clean_text(" ".join(filter_retrieval_terms(values, paper_type=paper_type, limit=limit)))
 
 
+# 对槽位之间的语义关系做协调，避免互相冲突或重复表达。
 def reconcile_slot_semantics(frame: Dict[str, Any]) -> None:
     task_slot = get_slot(frame, SLOT_SPECS["research_topic.task"]["path"])
     normalized_task_paper_type = normalize_paper_type_value(task_slot["value"])
@@ -1094,6 +1290,7 @@ def reconcile_slot_semantics(frame: Dict[str, Any]) -> None:
     set_slot(frame, SLOT_SPECS["research_topic.task"]["path"], slot_template("string"))
 
 
+# 根据已填充槽位反推出当前查询更像哪一种检索场景。
 def infer_search_scene_from_frame(frame: Dict[str, Any]) -> Dict[str, Any]:
     title_hint = get_slot(frame, SLOT_SPECS["document_attributes.title_hint"]["path"])
     author_name = get_slot(frame, SLOT_SPECS["document_attributes.author_name"]["path"])
@@ -1129,6 +1326,7 @@ def clone_completion_slot(base_slot: Dict[str, Any], candidate_slot: Dict[str, A
     return slot
 
 
+# 在模型输出之外补充启发式槽位识别，增强鲁棒性。
 def apply_heuristic_slot_completion(user_text: str, frame: Dict[str, Any]) -> Dict[str, Any]:
     query = clean_text(user_text)
     if not query:
@@ -1230,11 +1428,20 @@ def preserve_prior_scene(frame: Dict[str, Any], prior_scene: str) -> None:
         )
 
 
+# 从显式槽位推导隐含偏好和检索辅助字段。
 def fill_derived_slots(frame: Dict[str, Any]) -> None:
     reconcile_slot_semantics(frame)
 
+    search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
     paper_type = get_slot(frame, SLOT_SPECS["document_attributes.paper_type"]["path"])
     prefer_survey = get_slot(frame, SLOT_SPECS["result_preferences.prefer_survey"]["path"])
+    if search_scene["value"] == "survey_lookup" and paper_type["status"] == "missing":
+        set_slot(
+            frame,
+            SLOT_SPECS["document_attributes.paper_type"]["path"],
+            build_slot("survey", "confirmed", "derived_from_query", 0.8),
+        )
+        paper_type = get_slot(frame, SLOT_SPECS["document_attributes.paper_type"]["path"])
     if paper_type["value"] == "survey" and prefer_survey["status"] == "missing":
         set_slot(
             frame,
@@ -1262,7 +1469,6 @@ def fill_derived_slots(frame: Dict[str, Any]) -> None:
             build_slot("memory mechanism", "confirmed", "derived_from_query", 0.72),
         )
 
-    search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
     if search_scene["status"] in {"missing", "ambiguous"} or not clean_text(search_scene.get("value")):
         set_slot(frame, SLOT_SPECS["search_scene"]["path"], infer_search_scene_from_frame(frame))
         search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
@@ -1275,22 +1481,95 @@ def fill_derived_slots(frame: Dict[str, Any]) -> None:
             build_slot("yes", "confirmed", "derived_from_query", 0.76),
         )
 
+    time_slot = get_slot(frame, SLOT_SPECS["document_attributes.time_range"]["path"])
+    if time_slot["status"] == "confirmed" and time_slot["value"] in {"recent", "last 2 years", "last 3 years"} and prefer_recent["status"] == "missing":
+        set_slot(
+            frame,
+            SLOT_SPECS["result_preferences.prefer_recent"]["path"],
+            build_slot("yes", "confirmed", "derived_from_query", 0.82),
+        )
 
+
+def slot_should_count_as_missing(frame: Dict[str, Any], path_name: str, slot: Dict[str, Any]) -> bool:
+    if slot.get("status") != "missing":
+        return False
+
+    scene = clean_text(get_slot(frame, SLOT_SPECS["search_scene"]["path"]).get("value"))
+    prefer_recent = get_slot(frame, SLOT_SPECS["result_preferences.prefer_recent"]["path"])
+    prefer_survey = get_slot(frame, SLOT_SPECS["result_preferences.prefer_survey"]["path"])
+    topic_group = (
+        "research_topic.domain",
+        "research_topic.task",
+        "research_topic.problem",
+        "research_topic.keywords",
+    )
+    technical_group = (
+        "technical_constraints.method",
+        "technical_constraints.model_family",
+        "technical_constraints.dataset",
+        "technical_constraints.metric",
+        "technical_constraints.modality",
+    )
+
+    if path_name == "search_scene":
+        return True
+
+    if path_name.startswith("research_topic."):
+        if scene in {"author_trace", "specific_paper_lookup"}:
+            return False
+        has_topic_signal = any(
+            get_slot(frame, SLOT_SPECS[group_path]["path"]).get("status") != "missing"
+            and not slot_value_is_empty(get_slot(frame, SLOT_SPECS[group_path]["path"]))
+            for group_path in topic_group
+        )
+        return path_name == "research_topic.task" and not has_topic_signal
+
+    if path_name.startswith("technical_constraints."):
+        has_constraint_signal = any(
+            get_slot(frame, SLOT_SPECS[group_path]["path"]).get("status") != "missing"
+            and not slot_value_is_empty(get_slot(frame, SLOT_SPECS[group_path]["path"]))
+            for group_path in technical_group
+        )
+        return scene == "method_constrained_search" and path_name == "technical_constraints.method" and not has_constraint_signal
+
+    if path_name == "document_attributes.time_range":
+        return scene == "recent_progress" or prefer_recent.get("value") == "yes"
+
+    if path_name == "document_attributes.paper_type":
+        return scene == "survey_lookup" or prefer_survey.get("value") == "yes"
+
+    if path_name == "document_attributes.author_name":
+        return scene == "author_trace"
+
+    if path_name == "document_attributes.title_hint":
+        return scene == "specific_paper_lookup"
+
+    if path_name.startswith("result_preferences."):
+        return False
+
+    return False
+
+
+# 统一计算缺失槽位和歧义槽位列表，供追问和 Gap 分析复用。
 def compute_slot_lists(frame: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     missing_slots: List[str] = []
     answered_slots: List[str] = []
     for path_name, slot, _ in iter_leaf_slots(frame):
-        if slot["status"] == "missing":
+        if slot_should_count_as_missing(frame, path_name, slot):
             missing_slots.append(path_name)
-        else:
+        elif slot["status"] != "missing":
             answered_slots.append(path_name)
     return missing_slots, answered_slots
 
 
+# 基于缺失/歧义槽位决定是否需要继续追问用户。
 def build_clarification_question(frame: Dict[str, Any]) -> Tuple[bool, str]:
     questions: List[str] = []
     for group in CLARIFICATION_GROUPS:
-        if any(get_slot(frame, SLOT_SPECS[path]["path"])["status"] == "missing" for path in group["slots"]):
+        if any(
+            slot_should_count_as_missing(frame, path, get_slot(frame, SLOT_SPECS[path]["path"]))
+            for path in group["slots"]
+        ):
             questions.append(group["question"])
     if not questions:
         return False, ""
@@ -1341,6 +1620,7 @@ def collect_query_values(frame: Dict[str, Any], statuses: Sequence[str] = ("conf
     return values
 
 
+# 把结构化意图转成多路检索查询，供后续 sparse/exact/dense 召回使用。
 def generate_query_variants(frame: Dict[str, Any]) -> Tuple[List[str], List[str], List[str]]:
     values = collect_query_values(frame)
     search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])["value"]
@@ -1445,6 +1725,7 @@ def extract_raw_query_terms(user_text: str) -> List[str]:
     return clean_string_list(terms, limit=12)
 
 
+# 当结构化槽位信息不足时，从原始用户文本补齐查询组。
 def ensure_query_groups_from_user_text(frame: Dict[str, Any], user_text: str) -> Dict[str, Any]:
     normalized = finalize_intent_frame(
         frame,
@@ -1540,6 +1821,7 @@ def has_meaningful_slots(frame: Dict[str, Any]) -> bool:
     return False
 
 
+# 把模型解析、启发式补全和派生逻辑统一收敛成最终可用的 IntentFrame。
 def finalize_intent_frame(
     frame: Dict[str, Any],
     *,
@@ -1575,11 +1857,12 @@ def finalize_intent_frame(
     coarse_queries = clean_string_list(normalized.get("coarse_queries", []), limit=5)
     dense_queries = clean_string_list(normalized.get("dense_queries", []), limit=5)
     exact_queries = clean_string_list(normalized.get("exact_queries", []), limit=5)
-    if not coarse_queries and not dense_queries and not exact_queries and allow_query_fallback:
-        fallback_coarse_queries, fallback_dense_queries, fallback_exact_queries = generate_query_variants(normalized)
-        coarse_queries = fallback_coarse_queries
-        dense_queries = fallback_dense_queries
-        exact_queries = fallback_exact_queries
+    if not coarse_queries and not dense_queries and not exact_queries:
+        # query variants 属于派生字段，追问合并会先清空旧值，这里必须基于最新槽位重算。
+        derived_coarse_queries, derived_dense_queries, derived_exact_queries = generate_query_variants(normalized)
+        coarse_queries = derived_coarse_queries
+        dense_queries = derived_dense_queries
+        exact_queries = derived_exact_queries
 
     normalized["missing_slots"] = missing_slots
     normalized["answered_slots"] = answered_slots
@@ -1591,6 +1874,7 @@ def finalize_intent_frame(
     return normalized
 
 
+# 校验模型输出是否满足协议，必要时触发修复。
 def validate_llm_intent_frame(frame: Dict[str, Any], mode: str) -> Dict[str, Any]:
     search_scene = get_slot(frame, SLOT_SPECS["search_scene"]["path"])
     if search_scene.get("status") == "missing" or not clean_text(search_scene.get("value")):
@@ -1605,6 +1889,7 @@ def validate_llm_intent_frame(frame: Dict[str, Any], mode: str) -> Dict[str, Any
     return frame
 
 
+# 当模型输出不稳定时，用保守规则修复关键字段。
 def repair_llm_intent_frame(frame: Dict[str, Any], user_text: str) -> Dict[str, Any]:
     repaired = finalize_intent_frame(
         frame,
@@ -1633,6 +1918,7 @@ def detect_slot_ambiguous(text: str, slot_keywords: Sequence[str]) -> bool:
     return any(marker.lower() in lowered for marker in AMBIGUOUS_MARKERS)
 
 
+# 无法依赖 LLM 时，使用启发式规则直接解析用户文本。
 def heuristic_parse_text(text: str, source: str, infer_defaults: bool = True) -> Dict[str, Any]:
     query = clean_text(text)
     lowered = query.lower()
@@ -1691,16 +1977,18 @@ def heuristic_parse_text(text: str, source: str, infer_defaults: bool = True) ->
         set_slot(frame, SLOT_SPECS["document_attributes.time_range"]["path"], slot_mark_ambiguous("string", source))
 
     paper_type = ""
-    if contains_any(lowered, ["survey", "review", "综述"]):
-        paper_type = "survey"
-    elif "benchmark" in lowered:
+    if contains_any(lowered, ["method paper", "method papers", "方法论文", "方法类论文"]):
+        paper_type = "method"
+    elif contains_any(lowered, ["benchmark", "benchmark paper", "benchmark papers", "基准", "评测"]):
         paper_type = "benchmark"
-    elif "theory" in lowered:
+    elif contains_any(lowered, ["theory", "理论"]):
         paper_type = "theory"
-    elif "analysis" in lowered:
+    elif contains_any(lowered, ["analysis", "分析"]):
         paper_type = "analysis"
     elif contains_any(lowered, ["method", "approach", "方法"]):
         paper_type = "method"
+    elif contains_any(lowered, ["survey", "review", "综述"]):
+        paper_type = "survey"
     if paper_type:
         set_slot(frame, SLOT_SPECS["document_attributes.paper_type"]["path"], build_slot(paper_type, "confirmed", source, 0.8))
     elif detect_slot_ambiguous(query, ["paper type", "论文类型", "综述", "benchmark"]):
@@ -1730,45 +2018,49 @@ def heuristic_parse_text(text: str, source: str, infer_defaults: bool = True) ->
     if contains_any(lowered, ["classic", "foundational", "seminal", "经典", "奠基"]):
         set_slot(frame, SLOT_SPECS["result_preferences.prefer_classic"]["path"], build_slot("yes", "confirmed", source, 0.88))
 
-    if contains_any(lowered, ["survey", "review", "综述"]):
-        set_slot(frame, SLOT_SPECS["result_preferences.prefer_survey"]["path"], build_slot("yes", "confirmed", source, 0.88))
-    elif contains_any(lowered, ["不要综述", "not survey"]):
+    if contains_any(lowered, ["不要综述", "not survey", "non-survey", "不是综述"]):
         set_slot(frame, SLOT_SPECS["result_preferences.prefer_survey"]["path"], build_slot("no", "confirmed", source, 0.82))
+    elif contains_any(lowered, ["survey", "review", "综述"]):
+        set_slot(frame, SLOT_SPECS["result_preferences.prefer_survey"]["path"], build_slot("yes", "confirmed", source, 0.88))
 
     if contains_any(lowered, ["diverse", "broad", "多样", "多元", "多一些"]):
         set_slot(frame, SLOT_SPECS["result_preferences.prefer_diverse"]["path"], build_slot("yes", "confirmed", source, 0.85))
 
-    if contains_any(lowered, ["explain", "why", "reason", "解释", "理由", "为什么", "explainable"]):
-        set_slot(
-            frame,
-            SLOT_SPECS["result_preferences.need_explainable_reason"]["path"],
-            build_slot("yes", "confirmed", source, 0.92),
-        )
-    elif contains_any(lowered, ["不用解释", "不要解释", "no need explain"]):
+    if contains_any(lowered, ["不用解释", "不要解释", "no need explain", "无需解释", "不需要解释"]):
         set_slot(
             frame,
             SLOT_SPECS["result_preferences.need_explainable_reason"]["path"],
             build_slot("no", "confirmed", source, 0.86),
         )
+    elif contains_any(lowered, ["explain", "why", "reason", "解释", "理由", "为什么", "explainable"]):
+        set_slot(
+            frame,
+            SLOT_SPECS["result_preferences.need_explainable_reason"]["path"],
+            build_slot("yes", "confirmed", source, 0.92),
+        )
 
     if infer_defaults:
+        time_range_value = clean_text(get_slot(frame, SLOT_SPECS["document_attributes.time_range"]["path"]).get("value"))
+        paper_type_value = clean_text(get_slot(frame, SLOT_SPECS["document_attributes.paper_type"]["path"]).get("value"))
+        negative_survey = contains_any(lowered, ["不要综述", "not survey", "non-survey", "不是综述"])
         if get_slot(frame, SLOT_SPECS["document_attributes.author_name"]["path"])["status"] == "confirmed":
             set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("author_trace", "confirmed", source, 0.92))
         elif get_slot(frame, SLOT_SPECS["document_attributes.title_hint"]["path"])["status"] == "confirmed":
             set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("specific_paper_lookup", "confirmed", source, 0.9))
-        elif contains_any(lowered, ["survey", "review", "综述"]):
-            set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("survey_lookup", "confirmed", source, 0.86))
-        elif contains_any(lowered, ["recent", "latest", "最近", "最新"]):
-            set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("recent_progress", "confirmed", source, 0.84))
-        elif get_slot(frame, SLOT_SPECS["technical_constraints.method"]["path"])["status"] == "confirmed":
+        elif paper_type_value == "method" or get_slot(frame, SLOT_SPECS["technical_constraints.method"]["path"])["status"] == "confirmed":
             set_slot(
                 frame,
                 SLOT_SPECS["search_scene"]["path"],
-                build_slot("method_constrained_search", "confirmed", source, 0.8),
+                build_slot("method_constrained_search", "confirmed", source, 0.84),
             )
+        elif (paper_type_value == "survey" or contains_any(lowered, ["survey", "review", "综述"])) and not negative_survey:
+            set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("survey_lookup", "confirmed", source, 0.86))
+        elif time_range_value in {"recent", "last 2 years", "last 3 years"} or contains_any(lowered, ["recent", "latest", "最近", "最新"]):
+            set_slot(frame, SLOT_SPECS["search_scene"]["path"], build_slot("recent_progress", "confirmed", source, 0.84))
     return finalize_intent_frame(frame)
 
 
+# follow-up 回复会和上一轮意图框架合并，形成更完整的新状态。
 def merge_intent_frames(prior_frame: Dict[str, Any], delta_frame: Dict[str, Any], reply_text: str) -> Dict[str, Any]:
     return merge_intent_frames_with_policy(
         prior_frame,
@@ -1787,13 +2079,13 @@ def merge_intent_frames_with_policy(
     allow_clarification_fallback: bool,
     allow_query_fallback: bool,
 ) -> Dict[str, Any]:
-    merged = copy.deepcopy(
+    merged = clear_derived_frame_fields(copy.deepcopy(
         finalize_intent_frame(
             prior_frame,
             allow_clarification_fallback=allow_clarification_fallback,
             allow_query_fallback=allow_query_fallback,
         )
-    )
+    ))
     prior_scene_slot = get_slot(merged, SLOT_SPECS["search_scene"]["path"])
     prior_scene = clean_text(prior_scene_slot.get("value")) if prior_scene_slot.get("status") == "confirmed" else ""
     delta = finalize_intent_frame(
@@ -1807,7 +2099,7 @@ def merge_intent_frames_with_policy(
             spec = SLOT_SPECS[path_name]
             set_slot(merged, spec["path"], slot_mark_ambiguous(spec["kind"], "follow_up_reply"))
         return finalize_intent_frame(
-            merged,
+            clear_derived_frame_fields(merged),
             allow_clarification_fallback=allow_clarification_fallback,
             allow_query_fallback=allow_query_fallback,
         )
@@ -1830,12 +2122,73 @@ def merge_intent_frames_with_policy(
         set_slot(merged, spec["path"], new_slot)
     preserve_prior_scene(merged, prior_scene)
     return finalize_intent_frame(
-        merged,
+        clear_derived_frame_fields(merged),
         allow_clarification_fallback=allow_clarification_fallback,
         allow_query_fallback=allow_query_fallback,
     )
 
 
+def carry_forward_prior_slot(prior_slot: Dict[str, Any]) -> Dict[str, Any]:
+    carried = copy.deepcopy(prior_slot)
+    carried["source"] = "carried_forward_from_prior"
+    carried["confidence"] = max(clamp_confidence(carried.get("confidence"), fallback=0.0), 0.72)
+    return carried
+
+
+def coalesce_follow_up_full_frame(
+    prior_frame: Dict[str, Any],
+    llm_frame: Dict[str, Any],
+    reply_text: str,
+    *,
+    allow_clarification_fallback: bool,
+    allow_query_fallback: bool,
+) -> Dict[str, Any]:
+    prior = finalize_intent_frame(
+        copy.deepcopy(prior_frame),
+        allow_clarification_fallback=allow_clarification_fallback,
+        allow_query_fallback=allow_query_fallback,
+    )
+    merged = clear_derived_frame_fields(
+        apply_heuristic_slot_completion(
+            reply_text,
+            copy.deepcopy(
+                finalize_intent_frame(
+                    llm_frame,
+                    allow_clarification_fallback=allow_clarification_fallback,
+                    allow_query_fallback=allow_query_fallback,
+                )
+            ),
+        )
+    )
+
+    for path_name, spec in SLOT_SPECS.items():
+        current_slot = get_slot(merged, spec["path"])
+        if current_slot.get("status") != "missing":
+            continue
+        prior_slot = get_slot(prior, spec["path"])
+        if prior_slot.get("status") == "missing":
+            continue
+
+        # When the follow-up explicitly negates survey preference, do not silently resurrect survey-only paper type.
+        if path_name == "document_attributes.paper_type":
+            prefer_survey_slot = get_slot(merged, SLOT_SPECS["result_preferences.prefer_survey"]["path"])
+            if prefer_survey_slot.get("value") == "no" and clean_text(prior_slot.get("value")) == "survey":
+                continue
+
+        set_slot(merged, spec["path"], carry_forward_prior_slot(prior_slot))
+
+    preserve_prior_scene(
+        merged,
+        clean_text(get_slot(prior, SLOT_SPECS["search_scene"]["path"]).get("value")),
+    )
+    return finalize_intent_frame(
+        clear_derived_frame_fields(merged),
+        allow_clarification_fallback=allow_clarification_fallback,
+        allow_query_fallback=allow_query_fallback,
+    )
+
+
+# 使用大模型执行结构化意图解析，是主流程中的高精度路径。
 def parse_intent_with_llm(
     user_text: str,
     prior_frame: Optional[Dict[str, Any]] = None,
@@ -1873,13 +2226,14 @@ def parse_intent_with_llm(
         api_key=OPENAI_API_KEY,
     )
     if prior_frame is None:
+        final_frame = apply_heuristic_slot_completion(user_text, raw_frame)
         final_frame = finalize_intent_frame(
-            raw_frame,
+            clear_derived_frame_fields(final_frame),
             allow_clarification_fallback=False,
             allow_query_fallback=False,
         )
     else:
-        final_frame = merge_intent_frames_with_policy(
+        final_frame = coalesce_follow_up_full_frame(
             prior_frame,
             raw_frame,
             user_text,
@@ -1902,6 +2256,7 @@ def parse_intent_with_llm(
     return final_frame, used_model
 
 
+# 首轮查询解析入口，返回最终意图框架、追问文本和运行模式。
 def parse_intent_frame(user_text: str) -> Tuple[Dict[str, Any], Optional[str], str]:
     if not can_use_openai():
         append_error_log(
@@ -1921,6 +2276,7 @@ def parse_intent_frame(user_text: str) -> Tuple[Dict[str, Any], Optional[str], s
         raise OpenAIAPIError(f"LLM 意图分析失败：{exc}") from exc
 
 
+# follow-up 入口：把补充回复合并回已有 IntentFrame。
 def merge_follow_up_reply(prior_frame: Dict[str, Any], reply_text: str) -> Tuple[Dict[str, Any], Optional[str], str]:
     prior_normalized = finalize_intent_frame(
         prior_frame,
@@ -1951,6 +2307,7 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+# 把最终意图框架持久化到搜索历史表。
 def save_intent_frame(db_path: Path, query_text: str, intent_frame: Dict[str, Any]) -> int:
     with connect_db(db_path) as conn:
         cursor = conn.execute(
@@ -1988,6 +2345,7 @@ def load_search_history_count(db_path: Path) -> int:
         return int(conn.execute("SELECT COUNT(*) FROM search_history").fetchone()[0])
 
 
+# 批量跑一组测试查询，生成意图解析示例。
 def build_pilot_payload(queries: Sequence[str]) -> List[Dict[str, Any]]:
     results = []
     for query in queries:
@@ -2023,6 +2381,7 @@ def build_merge_examples_payload(examples: Sequence[Dict[str, str]]) -> List[Dic
     return payload
 
 
+# 汇总意图解析效果、错误和提示词信息，形成反馈报告。
 def write_feedback(
     openai_available: bool,
     openai_message: str,
@@ -2066,6 +2425,7 @@ def write_feedback(
     dump_text(FEEDBACK_PATH, content)
 
 
+# 生成意图模块全部演示和评估产物。
 def build_intent_assets(
     queries: Optional[Sequence[str]] = None,
     merge_examples: Optional[Sequence[Dict[str, str]]] = None,

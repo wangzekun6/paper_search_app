@@ -157,6 +157,7 @@ DEFAULT_SAMPLE_IDS = [
 ]
 
 
+# 重建数据库 schema；如果数据库被占用，会给出更明确的错误提示。
 def reset_database_schema(conn: sqlite3.Connection) -> None:
     try:
         conn.executescript(RESET_SCHEMA_SQL)
@@ -211,6 +212,7 @@ AUTHOR_STOPWORDS = {
 }
 
 
+# 解析建库脚本参数，决定样本来源、输出目录和校验范围。
 def parse_args() -> argparse.Namespace:
     """解析基础契约流水线参数，决定样本来源和输出目录。"""
 
@@ -248,6 +250,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 读取单篇论文的原始 JSON。
 def load_paper_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -298,6 +301,7 @@ def truncate(text: str, max_chars: int = 320) -> str:
     return text[: max_chars - 3].rstrip() + "..."
 
 
+# 用简单规则把章节标题归类到 intro/methods/results/discussion 等大类。
 def classify_section_title(title: str) -> str:
     title_lower = clean_text(title).lower()
     for section_type, keywords in SECTION_RULES.items():
@@ -306,6 +310,7 @@ def classify_section_title(title: str) -> str:
     return "other"
 
 
+# 把层级章节结构拍平成线性记录，便于后续入库和检索。
 def flatten_sections(
     paper_id: str,
     section_map: Dict[str, Any],
@@ -367,6 +372,7 @@ def looks_like_author_name(candidate: str) -> bool:
     return True
 
 
+# 尽量从原始作者串中抽取规范化作者名，供精确匹配和展示复用。
 def extract_author_candidates(authors_raw: str) -> List[str]:
     if not authors_raw:
         return []
@@ -400,6 +406,7 @@ def join_blocks(blocks: Iterable[str]) -> str:
     return "\n\n".join(cleaned)
 
 
+# 组织适合稀疏检索的全文字段，强调标题、摘要和关键章节。
 def build_fulltext_for_sparse(
     title: str,
     abstract: str,
@@ -416,6 +423,7 @@ def build_fulltext_for_sparse(
     return join_blocks(blocks)
 
 
+# 组织适合后续向量化或语义建模的紧凑文本表示。
 def build_embedding_text(
     title: str,
     abstract: str,
@@ -430,6 +438,7 @@ def build_embedding_text(
     return join_blocks(blocks)
 
 
+# 把单篇论文一次性转换成入库所需的全部记录对象。
 def build_records_for_paper(path: Path, data_root: Path) -> Tuple[RawPaperRecord, PaperIndexRecord, List[PaperSectionRecord], PaperSemanticCard]:
     """
     从单篇论文 JSON 一次性构建基础阶段需要的全部标准对象。
@@ -497,6 +506,7 @@ def build_records_for_paper(path: Path, data_root: Path) -> Tuple[RawPaperRecord
     return raw_record, index_record, section_records, semantic_card
 
 
+# 对原始论文 JSON 做结构校验，用于抽样验收和构建反馈。
 def validate_paper_structure(path: Path, data_root: Path) -> Dict[str, Any]:
     """抽查单篇论文的 JSON 结构，用于确认真实数据格式是否符合预期。"""
 
@@ -542,6 +552,7 @@ def write_text(path: Path, content: str) -> None:
     path.write_text(content.strip() + "\n", encoding="utf-8")
 
 
+# 组合显式指定样本和随机样本，形成校验清单。
 def build_validation_ids(data_root: Path, requested_ids: Sequence[str], random_check_count: int) -> List[str]:
     if requested_ids:
         return list(requested_ids)
@@ -550,6 +561,7 @@ def build_validation_ids(data_root: Path, requested_ids: Sequence[str], random_c
     return random.sample(all_ids, min(random_check_count, len(all_ids)))
 
 
+# 输出字段映射说明，帮助解释原始 JSON 到内部结构的对应关系。
 def write_field_mapping(output_dir: Path) -> None:
     content = """
 基础字段映射说明
@@ -583,6 +595,7 @@ SQLite 存储约定
     write_text(output_dir / "field_mapping.txt", content)
 
 
+# 输出章节分类规则，方便回看当前启发式逻辑。
 def write_section_rules(output_dir: Path) -> None:
     content = """
 基础 section 归类规则
@@ -608,6 +621,7 @@ def write_section_rules(output_dir: Path) -> None:
     write_text(output_dir / "section_rules.txt", content)
 
 
+# 汇总构建过程中的样本校验和 schema 信息，形成反馈报告。
 def write_feedback_report(
     output_dir: Path,
     data_root: Path,
@@ -666,6 +680,7 @@ def write_feedback_report(
     write_text(output_dir / "sample_feedback.txt", content)
 
 
+# 全量扫描数据集并写入数据库，是项目建库阶段的核心入口。
 def initialize_database(
     db_path: Path,
     raw_records: List[RawPaperRecord],
@@ -771,6 +786,7 @@ def initialize_database(
         conn.commit()
 
 
+# 脚本入口：执行一次基础数据契约流水线。
 def main() -> None:
     args = parse_args()
     data_root = resolve_dataset_root(args.data_root)

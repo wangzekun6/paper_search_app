@@ -19,7 +19,7 @@ import hashlib
 import pickle
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import intent, retrieval, semantic
 from .config import (
@@ -49,6 +49,7 @@ RANK_RESULTS_PATH = RANKING_EVAL_PATH
 FEEDBACK_PATH = SYSTEM_OUTPUT_DIR / "eval" / "chain_feedback.txt"
 ERROR_LOG_PATH = CHAIN_ERRORS_PATH
 
+# 召回融合和意图打分的权重集中放在这里，便于统一调参。
 FUSION_WEIGHTS = {"sparse": 0.45, "dense": 0.35, "exact": 0.20}
 INTENT_SCORE_WEIGHTS = {
     "scene_match": 0.12,
@@ -79,6 +80,21 @@ MAX_ERROR_LOG_ENTRIES = 500
 DENSE_INDEX_CACHE_VERSION = "dense_index_v1"
 DENSE_INDEX_DISK_CACHE_SUBDIR = "dense_indexes"
 DENSE_INDEX_DISK_CACHE_KEEP_PER_DB = 3
+STAGE_LABELS = {
+    "intent_parse": "LLM 意图解析",
+    "intent_follow_up_merge": "追问合并",
+    "retrieval_sparse": "稀疏召回",
+    "retrieval_dense": "稠密召回",
+    "retrieval_exact": "精确召回",
+    "retrieval_fusion": "候选融合",
+    "candidate_rows_load": "候选详情加载",
+    "semantic_card_backfill": "语义卡补全",
+    "query_paper_match": "Query-Paper 匹配",
+    "rerank_and_explain": "重排与解释",
+    "gap_report": "Gap 分析",
+    "follow_up_suggestion": "追问建议生成",
+    "total": "总耗时",
+}
 
 DIMENSION_LABELS = {
     "scene_match": "场景匹配",
@@ -119,6 +135,64 @@ SLOT_PATH_LABELS = {
     "result_preferences.prefer_survey": "偏好综述",
     "result_preferences.prefer_diverse": "偏好多样结果",
     "result_preferences.need_explainable_reason": "需要可解释理由",
+}
+
+FOLLOW_UP_TIME_RANGE_LABELS = {
+    "recent": "最近",
+    "last 2 years": "最近两年",
+    "last 3 years": "最近三年",
+    "classic": "经典时期",
+}
+
+FOLLOW_UP_SEARCH_SCENE_LABELS = {
+    "topic_exploration": "主题探索",
+    "survey_lookup": "综述检索",
+    "recent_progress": "近期进展",
+    "specific_paper_lookup": "特定论文定位",
+    "author_trace": "作者追踪",
+    "method_constrained_search": "方法约束检索",
+}
+
+FOLLOW_UP_PAPER_TYPE_LABELS = {
+    "survey": "综述",
+    "benchmark": "基准/评测",
+    "method": "方法论文",
+    "empirical_study": "实证研究",
+    "application_study": "应用研究",
+    "theory": "理论研究",
+    "analysis": "分析论文",
+}
+
+FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT = """You generate the next Chinese follow-up reply for an academic paper search system.
+
+The reply will be shown to the user as a ready-to-submit suggestion.
+
+Your job is to infer what the user truly wants from the full search context, not to mechanically paraphrase a fallback draft.
+Treat the original query and the latest user follow-up reply as the strongest signals. Use the intent snapshots, gap report,
+result signal summary, and top result mismatch summaries to decide what single follow-up would most improve retrieval focus.
+
+Requirements:
+1. Write exactly one direct Chinese follow-up reply, not a question.
+2. Preserve stable confirmed intent. If the latest user reply clearly overrides an earlier preference, follow the latest explicit preference.
+3. Strengthen only the constraints that are still missing, ambiguous, or contradicted by current results.
+4. If paper type mismatch or main-intent mismatch is the dominant problem, make that constraint explicit and hard.
+5. If the query gap is small but evidence gap remains large, sharpen the semantic target instead of repeating generic phrases like 不限.
+6. Prefer concrete, user-facing wording such as 研究领域、研究任务、研究问题、论文类型、时间范围、模态、以及是否解释推荐理由.
+7. Keep it concise, usually one semicolon-separated sentence within 120 Chinese characters.
+8. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
+9. Use fallback_draft_reference only as a weak backup when richer context is insufficient.
+10. The rationale must be one short Chinese sentence explaining what uncertainty or mismatch this follow-up is trying to fix.
+
+Return JSON only."""
+
+FOLLOW_UP_SUGGESTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "follow_up_reply": {"type": "string"},
+        "rationale": {"type": "string"},
+    },
+    "required": ["follow_up_reply", "rationale"],
+    "additionalProperties": False,
 }
 
 STANDARD_QUERY_SPECS = [
@@ -308,6 +382,7 @@ Requirements:
 """
 
 
+# 单条 query-paper 匹配结果的结构化输出 schema。
 def build_query_paper_match_item_schema() -> Dict[str, Any]:
     return {
         "type": "object",
@@ -341,6 +416,7 @@ def build_query_paper_match_item_schema() -> Dict[str, Any]:
     }
 
 
+# 批量匹配时根据批大小动态生成整体 schema。
 def build_query_paper_match_batch_schema(batch_size: int) -> Dict[str, Any]:
     return {
         "type": "object",
@@ -357,6 +433,7 @@ def build_query_paper_match_batch_schema(batch_size: int) -> Dict[str, Any]:
     }
 
 
+# 写入提示词、演示和评估产物前统一创建目录。
 def ensure_output_dir() -> None:
     ensure_system_layout()
 
@@ -396,6 +473,7 @@ def contains_chinese(text: str) -> bool:
     return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
+# 把内部维度标识转换成面向用户展示的中文标签。
 def localize_dimension_label(value: Any) -> str:
     text = clean_text(value)
     if not text:
@@ -486,6 +564,11 @@ def coerce_query_match_bool(value: Any) -> bool:
     return bool(value)
 
 
+def has_dimension_marker(values: Sequence[str], marker: str) -> bool:
+    return any(marker in clean_text(value) for value in values)
+
+
+# 统一清洗模型返回的 query-paper 匹配结果，保证下游字段稳定。
 def normalize_query_paper_match_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
     main_intent_satisfied = coerce_query_match_bool(raw_payload.get("main_intent_satisfied"))
     matched_dimensions = [
@@ -506,12 +589,32 @@ def normalize_query_paper_match_payload(raw_payload: Dict[str, Any]) -> Dict[str
     brief_reason = clean_text(raw_payload.get("brief_reason", ""))
     if not brief_reason or not contains_chinese(brief_reason):
         brief_reason = build_match_reason_fallback(matched_dimensions, main_intent_satisfied)
+    match_score = coerce_query_match_score(raw_payload.get("match_score", 0.0))
+    evidence_sufficiency = coerce_query_match_score(raw_payload.get("evidence_sufficiency", 0.0))
+
+    # 如果模型一边声称满足主意图，一边又把“主意图未满足”列为缺口，优先按否定判断修复。
+    if main_intent_satisfied and has_dimension_marker(unmet_dimensions, "主意图"):
+        main_intent_satisfied = False
+
+    if not main_intent_satisfied:
+        match_score = min(match_score, 0.78)
+        if has_dimension_marker(unmet_dimensions, "论文类型") or has_dimension_marker(unmet_dimensions, "主意图"):
+            match_score = min(match_score, 0.68)
+        evidence_sufficiency = min(evidence_sufficiency, 0.82)
+        if not has_dimension_marker(unmet_dimensions, "主意图"):
+            unmet_dimensions = clean_string_list(list(unmet_dimensions) + ["主意图未满足"], limit=4)
+    else:
+        # 对“满足主意图但分数异常偏低”的情况做一致性修复，避免布尔判断和得分冲突。
+        match_score = max(match_score, 0.72)
+        evidence_sufficiency = max(evidence_sufficiency, 0.58)
+        unmet_dimensions = [value for value in unmet_dimensions if "主意图" not in clean_text(value)]
+
     return {
         "main_intent_satisfied": main_intent_satisfied,
         "matched_dimensions": matched_dimensions,
         "unmet_dimensions": unmet_dimensions,
-        "match_score": coerce_query_match_score(raw_payload.get("match_score", 0.0)),
-        "evidence_sufficiency": coerce_query_match_score(raw_payload.get("evidence_sufficiency", 0.0)),
+        "match_score": match_score,
+        "evidence_sufficiency": evidence_sufficiency,
         "brief_reason": brief_reason,
     }
 
@@ -599,6 +702,7 @@ def build_query_paper_match_paper_payload(
     }
 
 
+# query-paper 匹配结果支持磁盘缓存，减少重复调用 LLM。
 def load_cached_query_paper_match(
     intent_frame: Dict[str, Any],
     paper_id: str,
@@ -858,6 +962,7 @@ def append_error_log(entry: Dict[str, Any]) -> None:
     dump_json(ERROR_LOG_PATH, errors)
 
 
+# 把当前 query-paper 匹配提示词和 schema 导出到文件。
 def write_prompt_file() -> None:
     content = f"""# Query-Paper 匹配提示词
 
@@ -874,6 +979,7 @@ def write_prompt_file() -> None:
     dump_text(EXPLANATION_PROMPT_PATH, content)
     if LEGACY_EXPLANATION_PROMPT_PATH != EXPLANATION_PROMPT_PATH:
         dump_text(LEGACY_EXPLANATION_PROMPT_PATH, content)
+# 稠密索引缓存需要跟数据库内容绑定，避免错用旧索引。
 def dense_index_cache_key(db_path: Path) -> str:
     resolved = db_path.resolve(strict=False)
     try:
@@ -977,6 +1083,7 @@ def prune_dense_index_cache_files(db_path: Path) -> None:
             continue
 
 
+# 优先从磁盘恢复稠密索引，减少重复构建时间。
 def load_dense_index_from_disk(db_path: Path, cache_key: str) -> Optional[Dict[str, Any]]:
     cache_path = dense_index_cache_path(db_path, cache_key)
     if not cache_path.exists():
@@ -1009,6 +1116,7 @@ def load_dense_index_from_disk(db_path: Path, cache_key: str) -> Optional[Dict[s
         return None
 
 
+# 将稠密索引持久化到磁盘，供后续查询复用。
 def persist_dense_index_to_disk(db_path: Path, cache_key: str, index: Dict[str, Any]) -> None:
     cache_path = dense_index_cache_path(db_path, cache_key)
     payload = {"version": DENSE_INDEX_CACHE_VERSION, "cache_key": cache_key, "index": index}
@@ -1043,6 +1151,7 @@ def persist_dense_index_to_disk(db_path: Path, cache_key: str, index: Dict[str, 
                 pass
 
 
+# 根据数据库中的论文文本构建轻量稠密检索索引。
 def build_dense_index(db_path: Path) -> Dict[str, Any]:
     cache_key = dense_index_cache_key(db_path)
     cached = DENSE_INDEX_CACHE.get(cache_key)
@@ -1141,6 +1250,7 @@ def load_paper_rows(conn: Any, paper_ids: Sequence[str]) -> Dict[str, Any]:
     return {row["paper_id"]: row for row in rows}
 
 
+# 主链路会按需确保候选论文已经拥有语义卡片。
 def ensure_semantic_cards_for_papers(db_path: Path, paper_ids: Sequence[str]) -> Dict[str, Any]:
     target_ids = clean_string_list(paper_ids, limit=max(len(paper_ids), 1))
     if not target_ids:
@@ -1203,6 +1313,7 @@ def semantic_card_text(semantic_card: Dict[str, Any]) -> str:
     return " ".join(chunks)
 
 
+# 从 IntentFrame 中收集可用于召回和打分的关键词集合。
 def collect_intent_terms(intent_frame: Dict[str, Any]) -> Dict[str, List[str]]:
     terms = {
         "topic": [],
@@ -1242,6 +1353,7 @@ def collect_intent_terms(intent_frame: Dict[str, Any]) -> Dict[str, List[str]]:
     }
 
 
+# 第一条召回路径：用关键词和 FTS 做稀疏检索。
 def run_sparse_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_query: int = 60) -> Dict[str, Dict[str, Any]]:
     aggregated: Dict[str, Dict[str, Any]] = {}
     for query in intent_frame.get("coarse_queries", []):
@@ -1264,6 +1376,7 @@ def run_sparse_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_
     return aggregated
 
 
+# 第二条召回路径：强调标题线索、作者名和短语的精确命中。
 def run_exact_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_query: int = 40) -> Dict[str, Dict[str, Any]]:
     unique_queries = list(dict.fromkeys(clean_string_list(intent_frame.get("exact_queries", []), limit=8)))
     if not unique_queries:
@@ -1291,6 +1404,7 @@ def run_exact_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_q
     return aggregated
 
 
+# 第三条召回路径：基于轻量稠密向量表示做语义近邻搜索。
 def run_dense_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_query: int = 60) -> Dict[str, Dict[str, Any]]:
     queries = clean_string_list(intent_frame.get("dense_queries", []), limit=8)
     if not queries:
@@ -1338,6 +1452,7 @@ def run_dense_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_q
     return aggregated
 
 
+# 将三路召回结果融合成统一候选池，是后续重排的输入。
 def fuse_candidate_pool(
     sparse_results: Dict[str, Dict[str, Any]],
     dense_results: Dict[str, Dict[str, Any]],
@@ -1525,6 +1640,7 @@ def build_matched_sections(section_rows: Sequence[Any], query_texts: Sequence[st
     return matched_sections, matched_snippets
 
 
+# 为每篇候选论文组织标题、摘要、章节和语义卡片等证据包。
 def build_paper_evidence_pack(
     candidate: Dict[str, Any],
     row: Any,
@@ -1579,6 +1695,7 @@ def build_paper_evidence_pack(
     }
 
 
+# 基于意图维度给候选论文打分，形成第一轮规则化重排。
 def score_candidate_against_intent(
     candidate: Dict[str, Any],
     row: Any,
@@ -1681,17 +1798,38 @@ def keep_ranked_result(intent_frame: Dict[str, Any], rank_result: Dict[str, Any]
     match_score = float(query_match.get("match_score", 0.0) or 0.0)
     main_intent_satisfied = bool(query_match.get("main_intent_satisfied"))
     scene = clean_text(intent.get_slot(intent_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
+    requested_paper_type_slot = intent.get_slot(intent_frame, intent.SLOT_SPECS["document_attributes.paper_type"]["path"])
+    requested_paper_type = clean_text(requested_paper_type_slot.get("value")) if requested_paper_type_slot.get("status") == "confirmed" else ""
     exact_match_type = clean_text(rank_result.get("exact_match_type", ""))
+    paper_type = clean_text(rank_result.get("paper_type", ""))
 
     if main_intent_satisfied:
         return True
+    if requested_paper_type and paper_type and paper_type != requested_paper_type:
+        return False
+    if scene == "survey_lookup" and paper_type != "survey":
+        return False
     if scene in {"author_trace", "specific_paper_lookup"}:
         if exact_match_type in {"author_match", "title_hint"} and match_score >= 0.6:
             return True
         return match_score >= 0.72
-    return match_score >= 0.55
+    return match_score >= 0.62
 
 
+def paper_type_priority(requested_paper_type: str, scene: str, paper_type: str) -> int:
+    normalized_type = clean_text(paper_type)
+    if requested_paper_type:
+        if normalized_type == requested_paper_type:
+            return 2
+        return 0 if normalized_type else 1
+    if scene == "survey_lookup":
+        if normalized_type == "survey":
+            return 2
+        return 0 if normalized_type else 1
+    return 1
+
+
+# 组装 query-paper 匹配所需的模型输入消息。
 def build_query_paper_match_messages(
     intent_frame: Dict[str, Any],
     evidence_pack: Dict[str, Any],
@@ -1707,6 +1845,7 @@ def build_query_paper_match_messages(
     ]
 
 
+# 对单篇候选论文生成 query-paper 匹配解释。
 def generate_query_paper_match(
     intent_frame: Dict[str, Any],
     evidence_pack: Dict[str, Any],
@@ -1756,6 +1895,7 @@ def generate_query_paper_match(
     return payload, used_model
 
 
+# 批量解释时把多篇候选打包到一次结构化请求中。
 def build_query_paper_match_batch_messages(
     intent_frame: Dict[str, Any],
     batch_items: Sequence[Dict[str, Any]],
@@ -1774,6 +1914,7 @@ def build_query_paper_match_batch_messages(
     ]
 
 
+# 批量生成 query-paper 匹配结果，降低调用成本。
 def generate_query_paper_match_batch(
     intent_frame: Dict[str, Any],
     batch_items: Sequence[Dict[str, Any]],
@@ -1822,7 +1963,13 @@ def generate_query_paper_match_batch(
     return normalized_results, used_model
 
 
-def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+# 根据最终结果反推当前检索还缺什么，形成 Gap 分析。
+def build_gap_report(
+    intent_frame: Dict[str, Any],
+    ranked_results: Sequence[Dict[str, Any]],
+    *,
+    follow_up_applied: bool = False,
+) -> Dict[str, Any]:
     gap_excluded_slots = {"result_preferences.need_explainable_reason"}
     missing_slots = [slot for slot in list(intent_frame.get("missing_slots", [])) if slot not in gap_excluded_slots]
     ambiguous_dimensions = []
@@ -1842,6 +1989,9 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
         top_slice = ranked_results[: min(10, len(ranked_results))]
         avg_topic = sum(item["topic_match"] for item in top_slice) / len(top_slice)
         avg_constraint = sum(item["constraint_match"] for item in top_slice) / len(top_slice)
+        main_intent_hits = sum(
+            1 for item in top_slice if (item.get("query_paper_match", {}) or {}).get("main_intent_satisfied")
+        )
         survey_hits = sum(1 for item in top_slice if item["paper_type"] == "survey")
         paper_type_hits = sum(1 for item in top_slice if item["paper_type_match"] >= 0.9)
         match_scores = [
@@ -1872,6 +2022,14 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
             matched_dimensions.append("topic_match")
         else:
             evidence_gap.append("当前 Top-K 结果在目标主题上的集中度仍不足。")
+
+        if main_intent_hits >= max(1, len(top_slice) // 3):
+            matched_dimensions.append("主意图满足")
+        else:
+            if follow_up_applied:
+                evidence_gap.append("当前 Top-K 中多数论文仍未满足主意图，追问后的约束尚未真正收敛。")
+            else:
+                evidence_gap.append("当前 Top-K 中多数论文仍未满足主意图，说明现有约束还不足以让结果收敛。")
 
         confirmed_constraints = [
             path_name
@@ -1926,6 +2084,318 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
     }
 
 
+def localize_follow_up_slot_value(path_name: str, value: Any) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    if path_name == "search_scene":
+        return FOLLOW_UP_SEARCH_SCENE_LABELS.get(text, text)
+    if path_name == "document_attributes.time_range":
+        return FOLLOW_UP_TIME_RANGE_LABELS.get(text, text)
+    if path_name == "document_attributes.paper_type":
+        return FOLLOW_UP_PAPER_TYPE_LABELS.get(text, text)
+    if path_name.startswith("result_preferences."):
+        return {"yes": "是", "no": "否"}.get(text, text)
+    return text
+
+
+def format_follow_up_slot_summary_value(path_name: str, slot: Dict[str, Any]) -> str:
+    value = slot.get("value")
+    if isinstance(value, list):
+        return "、".join(
+            clean_string_list(
+                (localize_follow_up_slot_value(path_name, item) for item in value if clean_text(item)),
+                limit=6,
+            )
+        )
+    return localize_follow_up_slot_value(path_name, value)
+
+
+def build_follow_up_intent_snapshot(frame: Dict[str, Any]) -> Dict[str, Any]:
+    confirmed_slots: List[str] = []
+    ambiguous_slots: List[str] = []
+    for path_name, slot, _ in intent.iter_leaf_slots(frame):
+        label = localize_slot_path(path_name)
+        value_text = format_follow_up_slot_summary_value(path_name, slot)
+        if slot.get("status") == "confirmed" and value_text:
+            confirmed_slots.append(f"{label}={value_text}")
+        elif slot.get("status") == "ambiguous":
+            ambiguous_slots.append(label)
+    return {
+        "confirmed_slots": clean_string_list(confirmed_slots, limit=12),
+        "ambiguous_slots": clean_string_list(ambiguous_slots, limit=8),
+        "missing_slots": localize_user_label_list(frame.get("missing_slots", []), limit=8),
+        "answered_slots": localize_user_label_list(frame.get("answered_slots", []), limit=12),
+        "clarification_needed": bool(frame.get("clarification_needed")),
+        "clarification_question": clean_text(frame.get("clarification_question", "")),
+        "query_variants": {
+            "coarse": clean_string_list(frame.get("coarse_queries", []), limit=4),
+            "dense": clean_string_list(frame.get("dense_queries", []), limit=4),
+            "exact": clean_string_list(frame.get("exact_queries", []), limit=4),
+        },
+    }
+
+
+def build_follow_up_intent_delta(
+    initial_frame: Dict[str, Any],
+    final_frame: Dict[str, Any],
+    limit: int = 8,
+) -> List[str]:
+    changes: List[str] = []
+    for path_name, spec in intent.SLOT_SPECS.items():
+        initial_slot = intent.get_slot(initial_frame, spec["path"])
+        final_slot = intent.get_slot(final_frame, spec["path"])
+        initial_value = format_follow_up_slot_summary_value(path_name, initial_slot)
+        final_value = format_follow_up_slot_summary_value(path_name, final_slot)
+        initial_status = clean_text(initial_slot.get("status"))
+        final_status = clean_text(final_slot.get("status"))
+        if initial_status == final_status and initial_value == final_value:
+            continue
+        label = localize_slot_path(path_name)
+        initial_display = initial_value or {"missing": "待补充", "ambiguous": "有歧义"}.get(initial_status, "未指定")
+        final_display = final_value or {"missing": "待补充", "ambiguous": "有歧义"}.get(final_status, "未指定")
+        changes.append(f"{label}: {initial_display} -> {final_display}")
+
+    query_groups = [
+        ("粗召回 query", clean_string_list(initial_frame.get("coarse_queries", []), limit=4), clean_string_list(final_frame.get("coarse_queries", []), limit=4)),
+        ("稠密召回 query", clean_string_list(initial_frame.get("dense_queries", []), limit=4), clean_string_list(final_frame.get("dense_queries", []), limit=4)),
+        ("精确召回 query", clean_string_list(initial_frame.get("exact_queries", []), limit=4), clean_string_list(final_frame.get("exact_queries", []), limit=4)),
+    ]
+    for label, before_items, after_items in query_groups:
+        if before_items != after_items:
+            before_text = " | ".join(before_items) if before_items else "未生成"
+            after_text = " | ".join(after_items) if after_items else "未生成"
+            changes.append(f"{label}: {before_text} -> {after_text}")
+    return clean_string_list(changes, limit=limit)
+
+
+def build_follow_up_result_signal_summary(
+    ranked_results: Sequence[Dict[str, Any]],
+    limit: int = 5,
+) -> Dict[str, Any]:
+    top_slice = list(ranked_results[:limit])
+    if not top_slice:
+        return {
+            "top_slice_size": 0,
+            "main_intent_satisfied_count": 0,
+            "avg_match_score": 0.0,
+            "paper_type_distribution": [],
+            "dominant_matched_dimensions": [],
+            "dominant_unmet_dimensions": [],
+            "main_intent_unsatisfied_titles": [],
+        }
+
+    main_intent_satisfied_count = 0
+    match_scores: List[float] = []
+    paper_type_counter: Counter[str] = Counter()
+    matched_dimensions: List[str] = []
+    unmet_dimensions: List[str] = []
+    unsatisfied_titles: List[str] = []
+    for item in top_slice:
+        query_match = item.get("query_paper_match") or {}
+        if query_match.get("main_intent_satisfied"):
+            main_intent_satisfied_count += 1
+        else:
+            title = clean_text(item.get("title", ""))
+            if title:
+                unsatisfied_titles.append(title)
+        match_scores.append(coerce_query_match_score(query_match.get("match_score", 0.0)))
+        paper_type = clean_text(item.get("paper_type", ""))
+        if paper_type:
+            paper_type_counter[localize_follow_up_slot_value("document_attributes.paper_type", paper_type)] += 1
+        matched_dimensions.extend(localize_user_label_list(query_match.get("matched_dimensions", []), limit=6))
+        unmet_dimensions.extend(localize_user_label_list(query_match.get("unmet_dimensions", []), limit=6))
+
+    avg_match_score = round(sum(match_scores) / max(len(match_scores), 1), 3)
+    paper_type_distribution = [f"{paper_type} x{count}" for paper_type, count in paper_type_counter.most_common(4)]
+    return {
+        "top_slice_size": len(top_slice),
+        "main_intent_satisfied_count": main_intent_satisfied_count,
+        "avg_match_score": avg_match_score,
+        "paper_type_distribution": paper_type_distribution,
+        "dominant_matched_dimensions": clean_string_list(matched_dimensions, limit=6),
+        "dominant_unmet_dimensions": clean_string_list(unmet_dimensions, limit=6),
+        "main_intent_unsatisfied_titles": clean_string_list(unsatisfied_titles, limit=3),
+    }
+
+
+def build_follow_up_draft_fallback(intent_frame: Dict[str, Any], gap_report: Dict[str, Any]) -> str:
+    query_gap = clean_string_list(gap_report.get("query_gap", []), limit=8)
+    evidence_gap = clean_string_list(gap_report.get("evidence_gap", []), limit=8)
+    if not query_gap and not evidence_gap and not intent_frame.get("clarification_needed"):
+        return ""
+
+    def slot_value(path_name: str) -> str:
+        slot = intent.get_slot(intent_frame, intent.SLOT_SPECS[path_name]["path"])
+        value = slot.get("value")
+        if isinstance(value, list):
+            localized_items = [
+                localize_follow_up_slot_value(path_name, item)
+                for item in value
+                if clean_text(item)
+            ]
+            return "、".join(item for item in localized_items if item)
+        return localize_follow_up_slot_value(path_name, value)
+
+    segments: List[str] = []
+    if any("研究领域" in item for item in query_gap):
+        segments.append(f"研究领域是{slot_value('research_topic.domain') or '大语言模型'}")
+    if any("研究任务" in item for item in query_gap):
+        segments.append(f"研究任务是{slot_value('research_topic.task') or 'retrieval-augmented generation'}")
+    if any("研究问题" in item for item in query_gap):
+        segments.append(f"研究问题是{slot_value('research_topic.problem') or '当前查询关注的问题'}")
+    if any(any(token in item for token in ("方法", "模型家族", "数据集", "指标", "模态")) for item in query_gap):
+        segments.append("方法、模型家族、数据集、指标和模态不限")
+
+    time_range = slot_value("document_attributes.time_range")
+    if time_range:
+        segments.append(f"时间范围限定为{time_range}")
+    elif any("时间范围" in item for item in query_gap):
+        segments.append("时间范围限定为最近两年")
+
+    paper_type = slot_value("document_attributes.paper_type")
+    paper_type_gap = any("论文类型" in item for item in query_gap + evidence_gap)
+    if paper_type:
+        if paper_type_gap or slot_value("search_scene") == "survey_lookup":
+            segments.append(f"论文类型必须是{paper_type}")
+        else:
+            segments.append(f"论文类型优先{paper_type}")
+    elif any("论文类型" in item for item in query_gap):
+        segments.append("论文类型以综述为主")
+
+    if slot_value("result_preferences.need_explainable_reason") == "是":
+        segments.append("并解释每篇论文为何匹配")
+
+    if not segments:
+        segments.append("请只保留与当前主题直接相关、满足已有约束的论文")
+
+    return "；".join(clean_string_list(segments, limit=6))
+
+
+def build_follow_up_suggestion_context(ranked_results: Sequence[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for index, item in enumerate(ranked_results[:limit], start=1):
+        query_match = item.get("query_paper_match") or {}
+        items.append(
+            {
+                "rank": index,
+                "title": clean_text(item.get("title", "")),
+                "year_month": clean_text(item.get("year_month", "")),
+                "paper_type": localize_follow_up_slot_value("document_attributes.paper_type", item.get("paper_type", "")),
+                "final_score": round(coerce_query_match_score(item.get("final_score", 0.0)), 3),
+                "match_score": round(coerce_query_match_score(query_match.get("match_score", 0.0)), 3),
+                "main_intent_satisfied": bool(query_match.get("main_intent_satisfied")),
+                "matched_dimensions": localize_user_label_list(query_match.get("matched_dimensions", []), limit=4),
+                "unmet_dimensions": localize_user_label_list(query_match.get("unmet_dimensions", []), limit=4),
+                "brief_reason": clean_text(query_match.get("brief_reason", "")),
+            }
+        )
+    return items
+
+
+def build_follow_up_suggestion_messages(
+    query: str,
+    follow_up_reply: Optional[str],
+    initial_intent_frame: Dict[str, Any],
+    final_intent_frame: Dict[str, Any],
+    gap_report: Dict[str, Any],
+    ranked_results: Sequence[Dict[str, Any]],
+    fallback_draft: str,
+) -> List[Dict[str, str]]:
+    payload = {
+        "search_round": "after_follow_up" if clean_text(follow_up_reply) else "initial_search",
+        "original_query": clean_text(query),
+        "latest_user_follow_up_reply": clean_text(follow_up_reply),
+        "initial_intent_snapshot": build_follow_up_intent_snapshot(initial_intent_frame),
+        "current_intent_snapshot": build_follow_up_intent_snapshot(final_intent_frame),
+        "intent_change_after_follow_up": build_follow_up_intent_delta(initial_intent_frame, final_intent_frame),
+        "gap_report": gap_report,
+        "result_signal_summary": build_follow_up_result_signal_summary(ranked_results),
+        "top_results": build_follow_up_suggestion_context(ranked_results),
+        "fallback_draft_reference": fallback_draft,
+    }
+    return [
+        {"role": "system", "content": FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+    ]
+
+
+def normalize_follow_up_suggestion_payload(raw_payload: Dict[str, Any], fallback_draft: str) -> Tuple[str, str, bool]:
+    draft = clean_text(raw_payload.get("follow_up_reply", ""))
+    rationale = clean_text(raw_payload.get("rationale", ""))
+    used_fallback = False
+    if not draft or not contains_chinese(draft):
+        draft = fallback_draft
+        used_fallback = True
+    if draft and draft[-1] not in "。！？!?":
+        draft += "。"
+    if not rationale or not contains_chinese(rationale):
+        rationale = "基于当前意图缺口和排序偏差生成的建议追问。"
+    return draft, rationale, used_fallback
+
+
+def build_follow_up_suggestion(
+    query: str,
+    follow_up_reply: Optional[str],
+    initial_intent_frame: Dict[str, Any],
+    final_intent_frame: Dict[str, Any],
+    gap_report: Dict[str, Any],
+    ranked_results: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    fallback_draft = build_follow_up_draft_fallback(final_intent_frame, gap_report)
+    if not fallback_draft:
+        return {"draft": "", "rationale": "", "generator": "none", "used_model": None}
+
+    if not can_use_openai():
+        return {
+            "draft": fallback_draft,
+            "rationale": "LLM 不可用，已回退到规则生成的建议追问。",
+            "generator": "rule",
+            "used_model": None,
+        }
+
+    try:
+        raw_payload, used_model = structured_chat_completion(
+            messages=build_follow_up_suggestion_messages(
+                query,
+                follow_up_reply,
+                initial_intent_frame,
+                final_intent_frame,
+                gap_report,
+                ranked_results,
+                fallback_draft,
+            ),
+            schema_name="follow_up_suggestion",
+            schema=FOLLOW_UP_SUGGESTION_SCHEMA,
+            model=OPENAI_MODEL,
+            temperature=0.1,
+            max_tokens=320,
+            timeout=90,
+            api_key=OPENAI_API_KEY,
+        )
+        draft, rationale, used_fallback = normalize_follow_up_suggestion_payload(raw_payload, fallback_draft)
+        return {
+            "draft": draft,
+            "rationale": rationale,
+            "generator": "rule" if used_fallback else "llm",
+            "used_model": None if used_fallback else used_model,
+        }
+    except Exception as exc:
+        append_error_log(
+            {
+                "stage": "follow_up_suggestion",
+                "error": str(exc),
+            }
+        )
+        return {
+            "draft": fallback_draft,
+            "rationale": "LLM 追问建议生成失败，已回退到规则生成的建议追问。",
+            "generator": "rule",
+            "used_model": None,
+        }
+
+
+# 结合规则得分和 LLM 匹配结果做最终重排。
 def rerank_candidates(
     db_path: Path,
     intent_frame: Dict[str, Any],
@@ -1934,6 +2404,7 @@ def rerank_candidates(
     sections_by_paper: Optional[Dict[str, List[Any]]] = None,
     top_k: int = DEFAULT_TOP_K,
     explain_limit: int = DEFAULT_EXPLAIN_LIMIT,
+    stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     sections_by_paper = sections_by_paper or {}
     ranked: List[Dict[str, Any]] = []
@@ -1945,6 +2416,9 @@ def rerank_candidates(
     )
     shared_intent_terms = collect_intent_terms(intent_frame)
     llm_explain_enabled = can_use_openai()
+    scene = clean_text(intent.get_slot(intent_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
+    requested_paper_type_slot = intent.get_slot(intent_frame, intent.SLOT_SPECS["document_attributes.paper_type"]["path"])
+    requested_paper_type = clean_text(requested_paper_type_slot.get("value")) if requested_paper_type_slot.get("status") == "confirmed" else ""
     if not llm_explain_enabled:
         raise OpenAIAPIError(f"LLM-led ranking is required, but query-paper match is unavailable: {OPENAI_RUNTIME_MESSAGE}")
 
@@ -1967,8 +2441,17 @@ def rerank_candidates(
             intent_frame,
             intent_terms=shared_intent_terms,
         )
+        candidate_paper_type = clean_text(score_payload.get("paper_type", ""))
+        explicit_paper_type_penalty = 0.0
+        if requested_paper_type and candidate_paper_type and candidate_paper_type != requested_paper_type:
+            explicit_paper_type_penalty += 0.22
+        if scene == "survey_lookup" and candidate_paper_type and candidate_paper_type != "survey":
+            explicit_paper_type_penalty += 0.12
         preliminary_score = clamp_score(
-            0.55 * candidate["base_score"] + 0.45 * score_payload["intent_score"] - score_payload["conflict_penalty"],
+            0.55 * candidate["base_score"]
+            + 0.45 * score_payload["intent_score"]
+            - score_payload["conflict_penalty"]
+            - explicit_paper_type_penalty,
             maximum=1.0,
         )
         rank_item = {
@@ -1995,12 +2478,13 @@ def rerank_candidates(
             "explanation_adjustment": 0.0,
             "explanation_parser": "pre_rank",
             "used_model": None,
+            "paper_type_priority": paper_type_priority(requested_paper_type, scene, candidate_paper_type),
         }
         ranked.append(rank_item)
         ranked_by_paper_id[candidate["paper_id"]] = rank_item
 
     ranked.sort(
-        key=lambda item: (-item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
+        key=lambda item: (-item["paper_type_priority"], -item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
     )
 
     # Let LLM inspect a focused slice by default, then widen only when
@@ -2017,6 +2501,15 @@ def rerank_candidates(
         if not evidence_packs[item["paper_id"]].get("semantic_card")
     ]
     if llm_explain_enabled and missing_semantic_card_ids:
+        if stage_callback:
+            stage_callback(
+                {
+                    "stage": "semantic_card_backfill",
+                    "status": "running",
+                    "label": STAGE_LABELS["semantic_card_backfill"],
+                    "paper_count": len(missing_semantic_card_ids),
+                }
+            )
         refreshed_rows = ensure_semantic_cards_for_papers(db_path, missing_semantic_card_ids)
         paper_rows.update(refreshed_rows)
         for paper_id in missing_semantic_card_ids:
@@ -2042,8 +2535,17 @@ def rerank_candidates(
                 intent_frame,
                 intent_terms=shared_intent_terms,
             )
+            candidate_paper_type = clean_text(score_payload.get("paper_type", ""))
+            explicit_paper_type_penalty = 0.0
+            if requested_paper_type and candidate_paper_type and candidate_paper_type != requested_paper_type:
+                explicit_paper_type_penalty += 0.22
+            if scene == "survey_lookup" and candidate_paper_type and candidate_paper_type != "survey":
+                explicit_paper_type_penalty += 0.12
             preliminary_score = clamp_score(
-                0.55 * item["base_score"] + 0.45 * score_payload["intent_score"] - score_payload["conflict_penalty"],
+                0.55 * item["base_score"]
+                + 0.45 * score_payload["intent_score"]
+                - score_payload["conflict_penalty"]
+                - explicit_paper_type_penalty,
                 maximum=1.0,
             )
             item.update(
@@ -2061,11 +2563,21 @@ def rerank_candidates(
                     "explanation_adjustment": 0.0,
                     "explanation_parser": "pre_rank",
                     "used_model": None,
+                    "paper_type_priority": paper_type_priority(requested_paper_type, scene, candidate_paper_type),
+                }
+            )
+        if stage_callback:
+            stage_callback(
+                {
+                    "stage": "semantic_card_backfill",
+                    "status": "completed",
+                    "label": STAGE_LABELS["semantic_card_backfill"],
+                    "paper_count": len(missing_semantic_card_ids),
                 }
             )
 
     shortlisted.sort(
-        key=lambda item: (-item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
+        key=lambda item: (-item["paper_type_priority"], -item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
     )
 
     match_results: Dict[str, Dict[str, Any]] = {}
@@ -2083,6 +2595,18 @@ def rerank_candidates(
                 "used_model": used_model,
                 "parser_name": "llm_query_paper_match_cache",
             }
+
+        if stage_callback:
+            stage_callback(
+                {
+                    "stage": "query_paper_match",
+                    "status": "running",
+                    "label": STAGE_LABELS["query_paper_match"],
+                    "paper_count": len(shortlisted),
+                    "cached_count": len(match_results),
+                    "llm_count": len(pending_items),
+                }
+            )
 
         pending_ids = [item["paper_id"] for item in pending_items]
         missing_section_ids = [paper_id for paper_id in pending_ids if paper_id not in sections_by_paper]
@@ -2157,6 +2681,27 @@ def rerank_candidates(
                     except Exception as exc:
                         match_failures.append(f"{', '.join(batch_ids[:4])}: {exc}")
 
+        if stage_callback:
+            query_match_models = clean_string_list(
+                (
+                    match_results[item["paper_id"]].get("used_model")
+                    for item in shortlisted
+                    if item["paper_id"] in match_results
+                ),
+                limit=4,
+            )
+            stage_callback(
+                {
+                    "stage": "query_paper_match",
+                    "status": "completed",
+                    "label": STAGE_LABELS["query_paper_match"],
+                    "paper_count": len(shortlisted),
+                    "cached_count": len([item for item in shortlisted if item["paper_id"] in match_results and match_results[item["paper_id"]].get("parser_name") == "llm_query_paper_match_cache"]),
+                    "llm_count": len([item for item in shortlisted if item["paper_id"] in match_results and match_results[item["paper_id"]].get("parser_name") != "llm_query_paper_match_cache"]),
+                    "used_model": ", ".join(query_match_models),
+                }
+            )
+
     if match_failures:
         raise OpenAIAPIError(
             "LLM query-paper match is required for ranking, but it failed for: "
@@ -2176,17 +2721,23 @@ def rerank_candidates(
         if match_payload.get("brief_reason"):
             reasons.append(match_payload["brief_reason"])
         reasons.extend(f"命中维度：{dimension}" for dimension in matched_dimensions[:2])
-        main_intent_bonus = 0.12 if match_payload["main_intent_satisfied"] else -0.10
-        main_intent_penalty = 0.08 if (not match_payload["main_intent_satisfied"] and match_payload["match_score"] < 0.65) else 0.0
+        paper_type_mismatch_penalty = 0.0
+        if requested_paper_type and clean_text(item.get("paper_type")) != requested_paper_type:
+            paper_type_mismatch_penalty = 0.34
+        elif scene == "survey_lookup" and clean_text(item.get("paper_type")) not in {"", "survey"}:
+            paper_type_mismatch_penalty = 0.26
+        main_intent_bonus = 0.12 if match_payload["main_intent_satisfied"] else -0.22
+        main_intent_penalty = 0.12 if (not match_payload["main_intent_satisfied"] and match_payload["match_score"] < 0.65) else 0.0
         final_score = clamp_score(
             0.04 * item["base_score"]
-            + 0.06 * item["intent_score"]
-            + 0.62 * match_payload["match_score"]
+            + 0.14 * item["intent_score"]
+            + 0.50 * match_payload["match_score"]
             + 0.18 * match_payload["evidence_sufficiency"]
             + main_intent_bonus
             - main_intent_penalty,
             maximum=1.0,
         )
+        final_score = clamp_score(final_score - paper_type_mismatch_penalty, maximum=1.0)
         item["query_paper_match"] = match_payload
         item["ranking_reasons"] = ensure_reason_list(reasons, evidence_pack, item)
         item["unmet_constraints"] = clean_string_list(
@@ -2198,7 +2749,16 @@ def rerank_candidates(
         item["final_score"] = round(final_score, 6)
         item["explanation_adjustment"] = round(final_score - item["preliminary_score"], 6)
 
-    shortlisted.sort(key=lambda item: (-item["final_score"], -item["intent_score"], -item["base_score"], item["title"]))
+    shortlisted.sort(
+        key=lambda item: (
+            -int(bool((item.get("query_paper_match", {}) or {}).get("main_intent_satisfied"))),
+            -item["paper_type_priority"],
+            -item["final_score"],
+            -item["intent_score"],
+            -item["base_score"],
+            item["title"],
+        )
+    )
     filtered_items = [item for item in shortlisted if keep_ranked_result(intent_frame, item)]
     top_items = filtered_items[:top_k]
     top_ids = {item["paper_id"] for item in top_items}
@@ -2232,6 +2792,7 @@ def rerank_candidates(
     return top_items, {paper_id: evidence_packs[paper_id] for paper_id in top_ids}
 
 
+# 以下一组函数用于标准查询回放和回归评估。
 def evaluate_intent_slot_checks(final_frame: Dict[str, Any], spec: Dict[str, Any]) -> List[Dict[str, Any]]:
     checks: List[Dict[str, Any]] = []
     for path_name, expected_value in (spec.get("expected_intent_slots") or {}).items():
@@ -2383,6 +2944,7 @@ def evaluate_top_3_quality(top_results: Sequence[Dict[str, Any]], spec: Dict[str
     }
 
 
+# 抽取解释样例，便于人工查看 query-paper 匹配质量。
 def build_explanation_samples(demo_runs: Sequence[Dict[str, Any]], top_n: int = 3) -> List[Dict[str, Any]]:
     samples: List[Dict[str, Any]] = []
     for run in demo_runs:
@@ -2405,6 +2967,7 @@ def build_explanation_samples(demo_runs: Sequence[Dict[str, Any]], top_n: int = 
     return samples
 
 
+# 汇总排序效果评估结果。
 def build_ranking_eval(demo_runs: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ranking_eval: List[Dict[str, Any]] = []
     for run in demo_runs:
@@ -2445,6 +3008,7 @@ def build_ranking_eval(demo_runs: Sequence[Dict[str, Any]]) -> List[Dict[str, An
     return ranking_eval
 
 
+# 汇总标准查询的整体回归结果，判断链路是否稳定。
 def build_regression_report(
     db_path: Path,
     specs: Sequence[Dict[str, Any]],
@@ -2497,6 +3061,7 @@ def build_regression_report(
     }
 
 
+# 生成标准查询演示说明文档。
 def build_demo_walkthrough(specs: Sequence[Dict[str, Any]]) -> str:
     lines = [
         "# Core Chain Walkthrough",
@@ -2534,6 +3099,7 @@ def build_demo_walkthrough(specs: Sequence[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+# 统计标准查询的候选集情况，辅助分析召回覆盖率。
 def collect_standard_query_candidate_stats(
     db_path: Path,
     specs: Sequence[Dict[str, Any]],
@@ -2623,6 +3189,7 @@ def collect_standard_query_candidate_stats(
     }
 
 
+# 先为标准查询相关论文预热语义卡片，减少正式运行时延迟。
 def prewarm_semantic_cards_for_standard_queries(
     db_path: Path,
     specs: Sequence[Dict[str, Any]],
@@ -2656,6 +3223,7 @@ def prewarm_semantic_cards_for_standard_queries(
     return stats
 
 
+# 主链路入口：完成意图解析、三路召回、重排、解释和 Gap 分析。
 def run_core_chain(
     query: str,
     db_path: Path,
@@ -2663,36 +3231,77 @@ def run_core_chain(
     top_k: int = DEFAULT_TOP_K,
     candidate_pool_size: int = DEFAULT_CANDIDATE_POOL_SIZE,
     explain_limit: int = DEFAULT_EXPLAIN_LIMIT,
+    stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     started_at = time.perf_counter()
     stage_timings: Dict[str, float] = {}
+    stage_events: List[Dict[str, Any]] = []
 
+    def relay_stage_event(event: Dict[str, Any]) -> None:
+        stage_events.append(event)
+        if stage_callback:
+            stage_callback(dict(event))
+
+    def emit_stage(stage: str, status: str, **payload: Any) -> None:
+        event = {
+            "stage": stage,
+            "status": status,
+            "label": STAGE_LABELS.get(stage, stage),
+            **payload,
+        }
+        relay_stage_event(event)
+
+    emit_stage("intent_parse", "running")
     stage_start = time.perf_counter()
     initial_frame, initial_intent_model, initial_intent_parser = intent.parse_intent_frame(query)
     stage_timings["intent_parse"] = time.perf_counter() - stage_start
+    emit_stage(
+        "intent_parse",
+        "completed",
+        duration=round(stage_timings["intent_parse"], 4),
+        parser=initial_intent_parser,
+        used_model=initial_intent_model,
+        missing_slots=len(initial_frame.get("missing_slots", [])),
+    )
     final_frame = initial_frame
     follow_up_intent_model: Optional[str] = None
     follow_up_intent_parser: Optional[str] = None
     if follow_up_reply:
+        emit_stage("intent_follow_up_merge", "running")
         stage_start = time.perf_counter()
         final_frame, follow_up_intent_model, follow_up_intent_parser = intent.merge_follow_up_reply(
             initial_frame,
             follow_up_reply,
         )
         stage_timings["intent_follow_up_merge"] = time.perf_counter() - stage_start
+        emit_stage(
+            "intent_follow_up_merge",
+            "completed",
+            duration=round(stage_timings["intent_follow_up_merge"], 4),
+            parser=follow_up_intent_parser,
+            used_model=follow_up_intent_model,
+            missing_slots=len(final_frame.get("missing_slots", [])),
+        )
 
+    emit_stage("retrieval_sparse", "running")
     stage_start = time.perf_counter()
     sparse_results = run_sparse_retrieval(final_frame, db_path=db_path)
     stage_timings["retrieval_sparse"] = time.perf_counter() - stage_start
+    emit_stage("retrieval_sparse", "completed", duration=round(stage_timings["retrieval_sparse"], 4), result_count=len(sparse_results))
 
+    emit_stage("retrieval_dense", "running")
     stage_start = time.perf_counter()
     dense_results = run_dense_retrieval(final_frame, db_path=db_path)
     stage_timings["retrieval_dense"] = time.perf_counter() - stage_start
+    emit_stage("retrieval_dense", "completed", duration=round(stage_timings["retrieval_dense"], 4), result_count=len(dense_results))
 
+    emit_stage("retrieval_exact", "running")
     stage_start = time.perf_counter()
     exact_results = run_exact_retrieval(final_frame, db_path=db_path)
     stage_timings["retrieval_exact"] = time.perf_counter() - stage_start
+    emit_stage("retrieval_exact", "completed", duration=round(stage_timings["retrieval_exact"], 4), result_count=len(exact_results))
 
+    emit_stage("retrieval_fusion", "running")
     stage_start = time.perf_counter()
     candidate_pool = fuse_candidate_pool(
         sparse_results=sparse_results,
@@ -2701,12 +3310,16 @@ def run_core_chain(
         candidate_pool_size=candidate_pool_size,
     )
     stage_timings["retrieval_fusion"] = time.perf_counter() - stage_start
+    emit_stage("retrieval_fusion", "completed", duration=round(stage_timings["retrieval_fusion"], 4), candidate_pool_size=len(candidate_pool))
 
+    emit_stage("candidate_rows_load", "running")
     stage_start = time.perf_counter()
     with retrieval.connect_db(db_path) as conn:
         paper_rows = load_paper_rows(conn, [item["paper_id"] for item in candidate_pool])
     stage_timings["candidate_rows_load"] = time.perf_counter() - stage_start
+    emit_stage("candidate_rows_load", "completed", duration=round(stage_timings["candidate_rows_load"], 4), row_count=len(paper_rows))
 
+    emit_stage("rerank_and_explain", "running")
     stage_start = time.perf_counter()
     ranked_results, evidence_packs = rerank_candidates(
         db_path=db_path,
@@ -2716,13 +3329,44 @@ def run_core_chain(
         sections_by_paper={},
         top_k=top_k,
         explain_limit=explain_limit,
+        stage_callback=relay_stage_event,
     )
     stage_timings["rerank_and_explain"] = time.perf_counter() - stage_start
+    emit_stage("rerank_and_explain", "completed", duration=round(stage_timings["rerank_and_explain"], 4), result_count=len(ranked_results))
 
+    emit_stage("gap_report", "running")
     stage_start = time.perf_counter()
-    gap_report = build_gap_report(final_frame, ranked_results)
+    gap_report = build_gap_report(final_frame, ranked_results, follow_up_applied=bool(follow_up_reply))
     stage_timings["gap_report"] = time.perf_counter() - stage_start
+    emit_stage("gap_report", "completed", duration=round(stage_timings["gap_report"], 4))
+
+    follow_up_suggestion = {"draft": "", "rationale": "", "generator": "none", "used_model": None}
+    if (
+        gap_report.get("query_gap")
+        or gap_report.get("evidence_gap")
+        or final_frame.get("clarification_needed")
+    ):
+        emit_stage("follow_up_suggestion", "running")
+        stage_start = time.perf_counter()
+        follow_up_suggestion = build_follow_up_suggestion(
+            query,
+            follow_up_reply,
+            initial_frame,
+            final_frame,
+            gap_report,
+            ranked_results,
+        )
+        stage_timings["follow_up_suggestion"] = time.perf_counter() - stage_start
+        emit_stage(
+            "follow_up_suggestion",
+            "completed",
+            duration=round(stage_timings["follow_up_suggestion"], 4),
+            generator=follow_up_suggestion.get("generator"),
+            used_model=follow_up_suggestion.get("used_model"),
+        )
+
     stage_timings["total"] = time.perf_counter() - started_at
+    emit_stage("total", "completed", duration=round(stage_timings["total"], 4))
 
     return {
         "query": query,
@@ -2743,12 +3387,15 @@ def run_core_chain(
         "dense_results": list(dense_results.values())[: min(20, len(dense_results))],
         "exact_results": list(exact_results.values())[: min(20, len(exact_results))],
         "intent_gap_report": gap_report,
+        "follow_up_suggestion": follow_up_suggestion,
+        "stage_events": stage_events,
         "stage_timings": {key: round(value, 4) for key, value in stage_timings.items()},
         "top_k_results": ranked_results,
         "paper_evidence_packs": {paper_id: evidence_packs[paper_id] for paper_id in [item["paper_id"] for item in ranked_results]},
     }
 
 
+# 输出主链路构建反馈报告。
 def write_chain_feedback(
     db_path: Path,
     demo_runs: Sequence[Dict[str, Any]],
@@ -2783,6 +3430,7 @@ def write_chain_feedback(
     dump_text(FEEDBACK_PATH, content)
 
 
+# 生成主链路相关的全部演示、评估和提示词资产。
 def build_core_chain_assets(
     db_path: Path,
     demos: Optional[Sequence[Dict[str, Any]]] = None,

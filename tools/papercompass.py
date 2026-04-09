@@ -41,6 +41,7 @@ from papercompass_core.services import (
 )
 
 
+# 统一以 UTF-8 输出 JSON，尽量避免 Windows 终端出现中文乱码。
 def print_json(payload: object) -> None:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -49,6 +50,7 @@ def print_json(payload: object) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+# 统一注册所有子命令，把项目能力暴露给终端用户。
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PaperCompass 统一项目命令行工具。")
     subparsers = parser.add_subparsers(dest="command")
@@ -146,6 +148,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 构建项目数据库、调试查询和可选语义层。
 def run_build_command(args: argparse.Namespace) -> None:
     summary = build_project(
         data_root=args.data_root,
@@ -162,17 +165,20 @@ def run_build_command(args: argparse.Namespace) -> None:
     print_json(summary)
 
 
+# 对已有项目数据库执行一次检索。
 def run_search_command(args: argparse.Namespace) -> None:
     results = search_project(args.query, mode=args.mode, top_k=args.top_k, db_path=args.db_path)
     print(f"查询: {args.query}")
     print_json(results)
 
 
+# 查看当前项目状态。
 def run_status_command(args: argparse.Namespace) -> None:
     stats = load_project_stats(args.db_path)
     print(format_status_block(stats, args.db_path))
 
 
+# 生成单篇或批量语义卡片。
 def run_cards_command(args: argparse.Namespace) -> None:
     if args.paper_id:
         payload = generate_semantic_card_for_paper(args.paper_id, db_path=args.db_path, refresh=args.refresh)
@@ -188,6 +194,7 @@ def run_cards_command(args: argparse.Namespace) -> None:
     print_json(summary)
 
 
+# 启动、恢复或查看后台语义补全任务。
 def run_semantic_backfill_command(args: argparse.Namespace) -> None:
     if args.status:
         print_json(get_semantic_backfill_status())
@@ -198,6 +205,7 @@ def run_semantic_backfill_command(args: argparse.Namespace) -> None:
     print_json(start_semantic_backfill(args.db_path, mode=args.mode, refresh=args.refresh))
 
 
+# 把自然语言查询解析成结构化意图。
 def run_intent_command(args: argparse.Namespace) -> None:
     payload = analyze_query_intent(
         user_text=args.text,
@@ -208,11 +216,13 @@ def run_intent_command(args: argparse.Namespace) -> None:
     print_json(payload)
 
 
+# 生成意图模块的提示词和评估产物。
 def run_intent_build_command(args: argparse.Namespace) -> None:
     summary = build_intent_assets(db_path=args.db_path)
     print_json(summary)
 
 
+# 对单个查询运行完整主链路。
 def run_chain_command(args: argparse.Namespace) -> None:
     payload = run_project_chain_session(
         query=args.query,
@@ -225,6 +235,7 @@ def run_chain_command(args: argparse.Namespace) -> None:
     print_json(payload)
 
 
+# 生成主链路演示、评估和回归产物。
 def run_chain_build_command(args: argparse.Namespace) -> None:
     summary = build_chain_assets(
         db_path=args.db_path,
@@ -235,26 +246,32 @@ def run_chain_build_command(args: argparse.Namespace) -> None:
     print_json(summary)
 
 
+# 查询最近的搜索历史。
 def run_history_command(args: argparse.Namespace) -> None:
     print_json(list_search_history(db_path=args.db_path, limit=args.limit))
 
 
+# 查询收藏论文列表。
 def run_saved_command(args: argparse.Namespace) -> None:
     print_json(list_saved_papers(db_path=args.db_path, limit=args.limit))
 
 
+# 收藏指定论文。
 def run_save_command(args: argparse.Namespace) -> None:
     print_json(save_paper(args.paper_id, db_path=args.db_path))
 
 
+# 取消收藏指定论文。
 def run_unsave_command(args: argparse.Namespace) -> None:
     print_json(unsave_paper(args.paper_id, db_path=args.db_path))
 
 
+# 查看单篇论文详情。
 def run_paper_command(args: argparse.Namespace) -> None:
     print_json(get_paper_detail(args.paper_id, db_path=args.db_path))
 
 
+# 根据子命令把请求分发到对应的服务实现。
 def main() -> None:
     try:
         args = parse_args()

@@ -19,6 +19,7 @@ from typing import Any, Dict, List
 
 
 # 保存原始 JSON，便于追溯、调试和详情展示。
+# 原始论文 JSON 的轻量封装，主要用于入库和追溯原始来源。
 @dataclass
 class RawPaperRecord:
     """对应一篇论文的原始 JSON 记录，尽量不做信息损失。"""
@@ -32,6 +33,7 @@ class RawPaperRecord:
 
 
 # 保存扁平化后的章节信息，便于章节级证据检索和片段展示。
+# 扁平化章节记录，供章节级证据展示和检索使用。
 @dataclass
 class PaperSectionRecord:
     """对应论文中的一个扁平化章节节点。"""
@@ -48,6 +50,7 @@ class PaperSectionRecord:
 
 
 # 保存主检索索引所需的论文级字段，是检索与语义模块的核心输入对象。
+# 论文级索引记录，是检索和语义模块共享的主输入对象。
 @dataclass
 class PaperIndexRecord:
     """对应论文级索引视图，聚合了检索和模型最常用的核心字段。"""
@@ -73,6 +76,7 @@ class PaperIndexRecord:
 
     def to_storage_row(self) -> Dict[str, Any]:
         row = asdict(self)
+        # SQLite 表结构保持扁平，因此列表字段统一序列化为 JSON 字符串。
         # SQLite 表结构保持扁平，列表字段统一序列化成 JSON 字符串再入库。
         row["normalized_authors"] = json.dumps(self.normalized_authors, ensure_ascii=False)
         row["section_titles"] = json.dumps(self.section_titles, ensure_ascii=False)
@@ -81,6 +85,7 @@ class PaperIndexRecord:
 
 
 # 保存语义模块生成的结构化语义标签，后续用于更高层的检索和展示。
+# 结构化语义卡片，用于高层检索、解释和展示。
 @dataclass
 class PaperSemanticCard:
     """对应一篇论文的结构化语义卡片。"""

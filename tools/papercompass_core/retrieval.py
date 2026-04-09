@@ -113,6 +113,7 @@ DEFAULT_DEBUG_QUERIES = [
 EXACT_SEARCH_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
+# 统一解析建库、检索和调试命令所需参数。
 def parse_args() -> argparse.Namespace:
     """解析统一检索流水线参数，支持建库、单次检索和批量调试查询。"""
 
@@ -148,6 +149,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 写文件前统一确保父目录存在。
 def ensure_parent_dir(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -162,6 +164,7 @@ def localize_match_type_label(value: Any) -> str:
     return MATCH_TYPE_LABELS.get(text, text)
 
 
+# 统一规范化源文件路径，便于数据库内稳定存储。
 def normalize_source_path(source_path: str | Path) -> str:
     path = Path(source_path)
     if path.is_absolute():
@@ -180,6 +183,7 @@ def paper_id_from_source_path(source_path: str | Path) -> str:
     return Path(source_path).stem
 
 
+# 把层级章节展开成线性条目，方便构造章节级索引记录。
 def iter_section_entries(
     section_map: Dict[str, Any],
     parents: Optional[Sequence[str]] = None,
@@ -214,6 +218,7 @@ def iter_section_entries(
     return flattened
 
 
+# 从原始 JSON 中提取扁平化章节记录。
 def extract_sections(raw_json: Dict[str, Any], paper_id: str = "") -> List[PaperSectionRecord]:
     section_records: List[PaperSectionRecord] = []
     flattened = iter_section_entries(raw_json.get("sections", {}))
@@ -235,6 +240,7 @@ def extract_sections(raw_json: Dict[str, Any], paper_id: str = "") -> List[Paper
     return section_records
 
 
+# 把单篇原始论文解析成可直接入库的论文级索引记录。
 def parse_paper_json(raw_json: Dict[str, Any], source_path: str | Path) -> PaperIndexRecord:
     source_path_text = normalize_source_path(source_path)
     paper_id = paper_id_from_source_path(source_path_text)
@@ -273,6 +279,7 @@ def parse_paper_json(raw_json: Dict[str, Any], source_path: str | Path) -> Paper
     )
 
 
+# 统一配置 SQLite 连接，使用 Row 访问风格方便后续处理。
 def connect_db(db_path: Path) -> sqlite3.Connection:
     ensure_parent_dir(db_path)
     conn = sqlite3.connect(db_path, timeout=30)
@@ -281,12 +288,14 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+# 初始化空数据库并确保基础 schema 完整。
 def initialize_database(db_path: Path) -> sqlite3.Connection:
     conn = connect_db(db_path)
     reset_database_schema(conn)
     return conn
 
 
+# 在重建数据库前备份运行期表，避免历史和收藏信息丢失。
 def backup_runtime_tables(db_path: Path) -> Dict[str, List[Dict[str, Any]]]:
     if not db_path.exists():
         return {"search_history": [], "saved_papers": []}
@@ -326,6 +335,7 @@ def backup_runtime_tables(db_path: Path) -> Dict[str, List[Dict[str, Any]]]:
     return {"search_history": search_history, "saved_papers": saved_papers}
 
 
+# 建库完成后把运行期表恢复回来，延续用户历史状态。
 def restore_runtime_tables(conn: sqlite3.Connection, backup_payload: Dict[str, List[Dict[str, Any]]]) -> None:
     search_history = backup_payload.get("search_history", [])
     if search_history:
@@ -407,6 +417,7 @@ def insert_sections(conn: sqlite3.Connection, section_records: Sequence[PaperSec
     )
 
 
+# 把论文标题、摘要和章节片段写入 FTS 表，供全文检索使用。
 def build_fts_index(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM paper_search_fts")
 
@@ -461,6 +472,7 @@ def load_raw_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# 全量扫描数据集并重建整个检索数据库。
 def build_database(data_root: Path, db_path: Path) -> Dict[str, int]:
     """
     把全量论文 JSON 写入 SQLite，并构建 FTS 检索表。
@@ -527,6 +539,7 @@ def normalize_match_text(text: str) -> str:
     return clean_text(text).lower()
 
 
+# 查询会先被拆成关键词 token，供多种检索策略复用。
 def tokenize_query(query: str) -> List[str]:
     """
     把用户 query 规整成适合 SQLite FTS 的 token 列表。
@@ -555,6 +568,7 @@ def tokenize_query(query: str) -> List[str]:
     return deduped
 
 
+# 把自然语言查询改写成更适合 SQLite FTS 的表达式。
 def prepare_fts_query(query: str) -> str:
     """
     把自然 query 转成 SQLite FTS 的 MATCH 表达式。
@@ -586,6 +600,7 @@ def first_match_index(text: str, normalized_query: str, tokens: Sequence[str]) -
     return -1
 
 
+# 为检索命中结果构造可展示的证据片段。
 def build_snippet(text: str, normalized_query: str, tokens: Sequence[str], max_chars: int = 320) -> str:
     cleaned = clean_text(text)
     if not cleaned:
@@ -624,6 +639,7 @@ def score_normalized_text(text_norm: str, normalized_query: str, tokens: Sequenc
     return score
 
 
+# 批量读取论文章节，供证据展示和 rerank 解释使用。
 def load_sections_for_papers(
     conn: sqlite3.Connection,
     paper_ids: Sequence[str],
@@ -658,6 +674,7 @@ def _exact_search_cache_key(database_path: Path) -> str:
     return f"{resolved}|{marker}"
 
 
+# 构建标题、作者和短语匹配用的内存索引，加速 exact match。
 def _build_exact_search_index(database_path: Path) -> Dict[str, Any]:
     with connect_db(database_path) as conn:
         paper_rows = conn.execute(
@@ -726,6 +743,7 @@ def _load_exact_search_index(database_path: Path) -> Dict[str, Any]:
     return payload
 
 
+# 从命中的字段里挑选最适合展示给用户的证据摘要。
 def pick_match_evidence(
     paper_row: sqlite3.Row,
     section_rows: Sequence[sqlite3.Row],
@@ -800,6 +818,7 @@ def pick_match_evidence(
     return "title", title or abstract or "暂无可用片段。"
 
 
+# 稀疏检索：基于 SQLite FTS 返回文本命中结果。
 def search_basic(
     query: str,
     top_k: int = 10,
@@ -878,6 +897,7 @@ def pick_exact_author_match(authors: Sequence[str], query: str, tokens: Sequence
     return best_author
 
 
+# 精确匹配：优先覆盖标题线索、作者名和短语命中场景。
 def search_exact_matches(
     query: str,
     top_k: int = 10,
@@ -1020,6 +1040,7 @@ def search_exact_matches(
     return results[:top_k]
 
 
+# 混合检索：融合稀疏检索和精确匹配结果，得到更稳健的候选集。
 def search_hybrid(
     query: str,
     top_k: int = 10,
@@ -1105,6 +1126,7 @@ def format_results_block(results: Sequence[Dict[str, Any]]) -> str:
     return "\n".join(lines).strip()
 
 
+# 批量运行默认调试查询，验证检索质量并产出样例。
 def run_debug_queries(
     db_path: Path,
     query_json_path: Path,
@@ -1156,6 +1178,7 @@ def run_debug_queries(
     return payload
 
 
+# 输出建库和调试查询的反馈报告。
 def write_feedback(
     db_path: Path,
     stats: Dict[str, int],
@@ -1194,6 +1217,7 @@ def write_feedback(
     dump_text(feedback_path, content)
 
 
+# CLI 构建命令入口。
 def run_build_command(args: argparse.Namespace) -> None:
     stats = build_database(args.data_root, args.db_path)
     query_payload = None
@@ -1207,6 +1231,7 @@ def run_build_command(args: argparse.Namespace) -> None:
     write_feedback(args.db_path, stats, query_payload, args.feedback_path)
 
 
+# CLI 单次检索入口。
 def run_search_command(args: argparse.Namespace) -> None:
     search_map = {
         "basic": search_basic,
@@ -1218,6 +1243,7 @@ def run_search_command(args: argparse.Namespace) -> None:
     print(format_results_block(results))
 
 
+# CLI 调试查询入口。
 def run_debug_command(args: argparse.Namespace) -> None:
     payload = run_debug_queries(
         db_path=args.db_path,
@@ -1228,6 +1254,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
     print(f"已将 {payload['query_count']} 条查询日志写入 {args.query_json_path} 和 {args.query_text_path}")
 
 
+# 脚本入口：根据子命令执行建库、检索或调试。
 def main() -> None:
     args = parse_args()
     if args.command is None:

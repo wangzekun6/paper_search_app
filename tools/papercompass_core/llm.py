@@ -28,6 +28,7 @@ except ImportError:  # pragma: no cover - Windows-only fallback
     winreg = None
 
 
+# 统一维护当前项目支持的 API 默认值和环境变量搜索顺序。
 DEFAULT_OPENAI_API_BASE = "http://newapi.hjlyywp.com/v1"
 DEFAULT_OPENAI_MODEL_CANDIDATES = ["gpt-5.1", "gpt-5", "gpt-5-codex-mini", "gpt-5-codex"]
 TRANSIENT_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -47,6 +48,7 @@ class OpenAIAPIError(RuntimeError):
     pass
 
 
+# 读取用户级/系统级 Windows 环境变量，兼容新配置后未重启终端的场景。
 def _read_windows_env(name: str) -> str:
     if os.name != "nt" or winreg is None:
         return ""
@@ -69,6 +71,7 @@ def _read_windows_env(name: str) -> str:
     return ""
 
 
+# 去掉形如 `"value"` 或 `'value'` 的包裹引号，便于解析 `.env` 文件。
 def _strip_matching_quotes(value: str) -> str:
     text = value.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
@@ -76,6 +79,7 @@ def _strip_matching_quotes(value: str) -> str:
     return text
 
 
+# 读取私有环境变量文件，允许项目把模型配置放在本地文件中。
 def _read_private_env_file(path: Path) -> Dict[str, str]:
     values: Dict[str, str] = {}
     try:
@@ -99,6 +103,7 @@ def _read_private_env_file(path: Path) -> Dict[str, str]:
     return values
 
 
+# 合并多个候选 `.env` 文件，形成最终的本地配置视图。
 def read_private_env_values() -> Dict[str, str]:
     global PRIVATE_ENV_VALUES
     if PRIVATE_ENV_VALUES is not None:
@@ -114,6 +119,7 @@ def read_private_env_values() -> Dict[str, str]:
     return merged
 
 
+# 环境变量读取顺序：当前进程 -> 本地私有文件 -> Windows 系统环境变量。
 def read_env_value(*names: str, default: str = "") -> str:
     private_values = read_private_env_values()
     for name in names:
@@ -160,6 +166,7 @@ except ValueError:
 CHAT_BACKOFF_BASE_SECONDS = 0.8
 
 
+# 尝试把不同来源的代理配置规范化为 requests 可直接使用的格式。
 def _normalize_proxy_url(value: str) -> str:
     proxy = value.strip()
     if not proxy:
@@ -169,6 +176,7 @@ def _normalize_proxy_url(value: str) -> str:
     return proxy
 
 
+# 解析 Windows Internet Settings 中的代理字符串。
 def _parse_proxy_server(proxy_server: str) -> Dict[str, str]:
     proxy_value = proxy_server.strip()
     if not proxy_value:
@@ -197,6 +205,7 @@ def _parse_proxy_server(proxy_server: str) -> Dict[str, str]:
     return proxies
 
 
+# 自动探测请求代理，优先尊重显式环境变量，再兜底读取系统代理。
 def detect_request_proxies() -> Optional[Dict[str, str]]:
     """从当前环境或 Windows 系统代理设置中推断 requests 应该使用的代理。"""
 
@@ -232,6 +241,7 @@ def detect_request_proxies() -> Optional[Dict[str, str]]:
     return proxies or None
 
 
+# 代理探测结果会被缓存，避免每次请求都重复读取系统配置。
 def get_request_proxies() -> Optional[Dict[str, str]]:
     global REQUEST_PROXIES
     if REQUEST_PROXIES is None:
@@ -239,6 +249,7 @@ def get_request_proxies() -> Optional[Dict[str, str]]:
     return REQUEST_PROXIES or None
 
 
+# 统一构造 OpenAI-compatible 请求头。
 def build_headers(api_key: str = "") -> Dict[str, str]:
     key = api_key or OPENAI_API_KEY
     if not key:
@@ -297,6 +308,7 @@ def _retry_backoff_sleep(attempt: int) -> None:
     time.sleep(delay)
 
 
+# 普通对话接口，供非结构化文本生成场景复用。
 def chat_completion(
     messages: Sequence[Dict[str, str]],
     response_format: Optional[Dict[str, Any]] = None,
@@ -365,6 +377,7 @@ def chat_completion(
 
     raise OpenAIAPIError(last_error)
 
+# 结构化对话接口，要求模型按照给定 JSON Schema 返回结果。
 def structured_chat_completion(
     messages: Sequence[Dict[str, str]],
     schema_name: str,
@@ -422,6 +435,7 @@ def structured_chat_completion(
         return json.loads(content), used_model
 
 
+# 对当前模型配置做一次最小连通性探测。
 def test_openai_api(api_key: str = "", timeout: int = 30) -> Tuple[bool, str]:
     """用一次最小请求测试当前 API Key、Base URL 和模型配置是否可用。"""
 
@@ -442,6 +456,7 @@ def test_openai_api(api_key: str = "", timeout: int = 30) -> Tuple[bool, str]:
         return False, f"OpenAI 测试失败: {exc}"
 
 
+# 用大模型把自然语言问题改写成更适合检索的关键词串。
 def generate_keywords_via_openai(natural_query: str, api_key: str = "") -> Tuple[str, str]:
     """
     把自然语言检索请求改写成更短、更适合词项检索的英文关键词。

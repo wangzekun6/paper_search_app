@@ -39,6 +39,7 @@ DEFAULT_SEMANTIC_TARGET_COUNT = semantic.DEFAULT_TARGET_COUNT
 DEFAULT_PILOT_COUNT = semantic.DEFAULT_PILOT_COUNT
 DEFAULT_SEMANTIC_BACKFILL_MODE = "standard"
 
+# 把检索模式映射到具体实现，方便前端和 CLI 统一透传参数。
 SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
     "basic": retrieval.search_basic,
     "exact": retrieval.search_exact_matches,
@@ -47,10 +48,12 @@ SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
 STANDARD_QUERIES_CACHE: Dict[str, Any] = {"mtime_ns": None, "value": None}
 
 
+# 默认数据库路径统一从运行态配置读取。
 def get_default_db_path() -> Path:
     return get_active_runtime_db_path()
 
 
+# 统一解析项目数据库路径，允许调用方显式覆盖默认值。
 def resolve_project_db_path(db_path: str | Path | None = None) -> Path:
     if db_path is None:
         return get_active_runtime_db_path()
@@ -70,6 +73,7 @@ def require_project_database(db_path: str | Path | None = None) -> Path:
     return database_path
 
 
+# 收藏区和结果卡片都复用这一套作者清洗逻辑。
 def extract_authors_for_display(authors_raw: str) -> List[str]:
     text = " ".join(str(authors_raw or "").split()).strip()
     if not text:
@@ -106,6 +110,7 @@ def extract_authors_for_display(authors_raw: str) -> List[str]:
     return [text]
 
 
+# 在界面上压缩显示作者列表，避免标题区过长。
 def format_authors_for_display(authors_raw: str, max_names: int = 4) -> str:
     authors = extract_authors_for_display(authors_raw)
     if not authors:
@@ -115,6 +120,7 @@ def format_authors_for_display(authors_raw: str, max_names: int = 4) -> str:
     return f"{' · '.join(authors[:max_names])} · +{len(authors) - max_names}"
 
 
+# 统计语义卡片各状态分布，便于查看生成进度。
 def _semantic_status_counts(conn: Any) -> Dict[str, int]:
     rows = conn.execute(
         """
@@ -127,6 +133,7 @@ def _semantic_status_counts(conn: Any) -> Dict[str, int]:
     return {row["card_status"]: row["count"] for row in rows}
 
 
+# 汇总项目级统计信息，给状态面板和 CLI 复用。
 def load_project_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     database_path = resolve_project_db_path(db_path)
     stats = retrieval.load_database_stats(database_path)
@@ -144,6 +151,7 @@ def load_project_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     return stats
 
 
+# 从磁盘缓存恢复语义卡片到数据库。
 def restore_semantic_card_cache(
     db_path: str | Path | None = None,
     *,
@@ -153,6 +161,7 @@ def restore_semantic_card_cache(
     return semantic.restore_cached_semantic_cards(database_path, refresh=refresh)
 
 
+# 启动后台语义卡片补全任务。
 def start_semantic_backfill(
     db_path: str | Path | None = None,
     *,
@@ -167,6 +176,7 @@ def get_semantic_backfill_status() -> Dict[str, Any]:
     return semantic_backfill.get_semantic_backfill_status()
 
 
+# 对外暴露统一的项目检索入口。
 def search_project(
     query: str,
     mode: str = "hybrid",
@@ -179,6 +189,7 @@ def search_project(
     return SEARCH_MODE_TO_FN[mode](query, top_k=top_k, db_path=database_path)
 
 
+# 生成语义层相关演示、样例和评估产物。
 def build_semantic_assets(
     db_path: str | Path | None = None,
     target_count: int = DEFAULT_SEMANTIC_TARGET_COUNT,
@@ -239,6 +250,7 @@ def build_semantic_assets(
     }
 
 
+# 构建完整项目：建库、调试查询、可选语义层和后台补全。
 def build_project(
     data_root: str | Path = DEFAULT_DATA_ROOT,
     db_path: str | Path | None = None,
@@ -325,6 +337,7 @@ def build_project(
     return payload
 
 
+# 单篇论文语义卡片生成接口，供 CLI 或调试场景调用。
 def generate_semantic_card_for_paper(
     paper_id: str,
     db_path: str | Path | None = None,
@@ -348,6 +361,7 @@ def generate_semantic_card_for_paper(
     }
 
 
+# 查询意图解析入口，支持首轮解析和 follow-up 合并。
 def analyze_query_intent(
     user_text: str,
     db_path: str | Path | None = None,
@@ -382,6 +396,7 @@ def analyze_query_intent(
     return payload
 
 
+# 生成意图模块的提示词与评估资产。
 def build_intent_assets(
     db_path: str | Path | None = None,
     queries: Optional[List[str]] = None,
@@ -395,6 +410,7 @@ def build_intent_assets(
     return summary
 
 
+# 执行一次完整主链路，但不负责写入历史。
 def run_project_chain(
     query: str,
     db_path: str | Path | None = None,
@@ -402,6 +418,7 @@ def run_project_chain(
     top_k: int = chain.DEFAULT_TOP_K,
     candidate_pool_size: int = chain.DEFAULT_CANDIDATE_POOL_SIZE,
     explain_limit: int = chain.DEFAULT_EXPLAIN_LIMIT,
+    stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
     payload = chain.run_core_chain(
@@ -411,11 +428,13 @@ def run_project_chain(
         top_k=top_k,
         candidate_pool_size=candidate_pool_size,
         explain_limit=explain_limit,
+        stage_callback=stage_callback,
     )
     merge_app_state({"last_chain_query": query, "last_chain_result_count": len(payload.get("top_k_results", []))})
     return payload
 
 
+# 在主链路之上补充历史落库，形成用户会话级接口。
 def run_project_chain_session(
     query: str,
     db_path: str | Path | None = None,
@@ -424,6 +443,7 @@ def run_project_chain_session(
     candidate_pool_size: int = chain.DEFAULT_CANDIDATE_POOL_SIZE,
     explain_limit: int = chain.DEFAULT_EXPLAIN_LIMIT,
     persist_history: bool = True,
+    stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     payload = run_project_chain(
         query=query,
@@ -432,6 +452,7 @@ def run_project_chain_session(
         top_k=top_k,
         candidate_pool_size=candidate_pool_size,
         explain_limit=explain_limit,
+        stage_callback=stage_callback,
     )
     history_id = None
     if persist_history:
@@ -442,6 +463,7 @@ def run_project_chain_session(
     return payload
 
 
+# 最近查询历史列表，供前端管理区和 CLI 使用。
 def list_search_history(db_path: str | Path | None = None, limit: int = 20) -> List[Dict[str, Any]]:
     database_path = require_project_database(db_path)
     with retrieval.connect_db(database_path) as conn:
@@ -465,6 +487,7 @@ def list_search_history(db_path: str | Path | None = None, limit: int = 20) -> L
     ]
 
 
+# 收藏/取消收藏接口直接操作数据库表。
 def save_paper(paper_id: str, db_path: str | Path | None = None) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
     with retrieval.connect_db(database_path) as conn:
@@ -488,6 +511,7 @@ def unsave_paper(paper_id: str, db_path: str | Path | None = None) -> Dict[str, 
     return {"paper_id": paper_id, "saved": False}
 
 
+# 读取收藏列表时顺带补齐展示友好的作者信息。
 def list_saved_papers(db_path: str | Path | None = None, limit: int = 50) -> List[Dict[str, Any]]:
     database_path = require_project_database(db_path)
     with retrieval.connect_db(database_path) as conn:
@@ -522,6 +546,7 @@ def get_saved_paper_ids(db_path: str | Path | None = None) -> List[str]:
     return [row["paper_id"] for row in rows]
 
 
+# 单篇详情接口聚合论文主记录、章节和语义卡片。
 def get_paper_detail(paper_id: str, db_path: str | Path | None = None) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
     with retrieval.connect_db(database_path) as conn:
@@ -563,6 +588,7 @@ def get_paper_detail(paper_id: str, db_path: str | Path | None = None) -> Dict[s
     }
 
 
+# 标准查询会做简单缓存，避免前端每次刷新都重复读取磁盘。
 def load_standard_queries() -> List[Dict[str, Any]]:
     default_value = list(chain.STANDARD_QUERY_SPECS)
     try:
@@ -585,11 +611,13 @@ def load_standard_queries() -> List[Dict[str, Any]]:
     return copy.deepcopy(loaded_value)
 
 
+# app_state 负责记录运行期轻量状态，例如最近一次查询信息。
 def load_app_state() -> Dict[str, Any]:
     ensure_system_layout()
     return read_json(APP_STATE_PATH, {})
 
 
+# 生成主链路演示和评估产物。
 def build_chain_assets(
     db_path: str | Path | None = None,
     top_k: int = chain.DEFAULT_TOP_K,
@@ -605,6 +633,7 @@ def build_chain_assets(
     )
 
 
+# 统一格式化状态信息，便于 CLI 直接输出。
 def format_status_block(stats: Dict[str, int], db_path: str | Path | None = None) -> str:
     database_path = resolve_project_db_path(db_path)
     semantic_backfill_status = get_semantic_backfill_status()

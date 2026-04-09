@@ -87,6 +87,7 @@ USER_INTENT_ENUM = [
 ]
 SOURCE_SECTION_ENUM = ["abstract", "Introduction", "Methods", "Results", "Discussion", "Other"]
 
+# 语义卡片的系统提示词集中定义在这里，方便导出和版本管理。
 SYSTEM_PROMPT = """You are building structured semantic cards for an academic paper retrieval system.
 
 Read only the provided compact paper context. Do not invent facts that are not supported by the input.
@@ -256,6 +257,7 @@ SEMANTIC_CARD_SCHEMA: Dict[str, Any] = {
 }
 
 
+# 解析语义卡片生成脚本参数，支持批量和单篇两类模式。
 def parse_args() -> argparse.Namespace:
     """解析语义卡片流水线参数，支持批量生成和单篇重刷两种模式。"""
 
@@ -276,6 +278,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+# 写入提示词、样例和评估产物前统一创建目录。
 def ensure_output_dir() -> None:
     ensure_system_layout()
 
@@ -290,6 +293,7 @@ def dump_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
 
 
+# 从长文本中截取少量段落，控制传给模型的上下文长度。
 def split_paragraphs(text: str, limit: int = 2) -> List[str]:
     paragraphs = [part.strip() for part in str(text or "").split("\n\n") if part.strip()]
     return paragraphs[:limit]
@@ -322,10 +326,12 @@ def enforce_enum(value: str, allowed: Sequence[str], fallback: str) -> str:
     return fallback
 
 
+# 生成空白语义卡片骨架，便于后续做兜底和字段修复。
 def blank_semantic_card(paper_id: str) -> Dict[str, Any]:
     return PaperSemanticCard(paper_id=paper_id).to_dict()
 
 
+# 在缺少 LLM 结果时，使用启发式规则推断论文类型。
 def infer_paper_type(title: str, abstract: str, survey_signals: Sequence[str], method_tags: Sequence[str]) -> str:
     text = f"{title} {abstract}".lower()
     if "survey" in text or survey_signals:
@@ -360,6 +366,7 @@ def infer_user_intents(card: Dict[str, Any], title: str) -> List[str]:
     return clean_tag_list(valid, limit=4)
 
 
+# 规范化证据片段，确保字段名和结构稳定。
 def normalize_evidence_spans(spans: Iterable[Any]) -> List[Dict[str, str]]:
     normalized: List[Dict[str, str]] = []
     for item in spans:
@@ -406,6 +413,7 @@ def load_paper_row(conn: Any, paper_id: str) -> Optional[Any]:
     ).fetchone()
 
 
+# 从数据库行构造紧凑的模型输入，避免直接发送整篇论文全文。
 def build_llm_input_from_row(row: Any) -> Dict[str, Any]:
     """
     从 papers 表中的单行记录构造固定 LLM 输入窗口。
@@ -435,6 +443,7 @@ def build_llm_input_from_row(row: Any) -> Dict[str, Any]:
     return payload
 
 
+# 组装语义卡片生成请求消息。
 def build_messages(paper_context: Dict[str, Any]) -> List[Dict[str, str]]:
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -447,6 +456,7 @@ def build_messages(paper_context: Dict[str, Any]) -> List[Dict[str, str]]:
     ]
 
 
+# 对模型返回的卡片做字段补全、约束校验和保守修复。
 def validate_semantic_card(raw_card: Dict[str, Any], paper_context: Dict[str, Any]) -> Dict[str, Any]:
     """
     把模型输出规范化成系统内部可稳定使用的语义卡片格式。
@@ -490,6 +500,7 @@ def validate_semantic_card(raw_card: Dict[str, Any], paper_context: Dict[str, An
     return card
 
 
+# 缓存当前大模型运行时是否可用，避免重复探测。
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
     if OPENAI_RUNTIME_AVAILABLE is not None:
@@ -536,6 +547,7 @@ def infer_survey_signals(title: str, abstract: str) -> List[str]:
     return clean_tag_list(signals, limit=4)
 
 
+# 无法调用大模型时，使用启发式规则生成兜底语义卡片。
 def heuristic_semantic_card(paper_context: Dict[str, Any]) -> Dict[str, Any]:
     """
     保留一个规则化卡片构造器，供离线调试或人工对比使用。
@@ -666,6 +678,7 @@ def list_missing_generated_ids(conn: Any, limit: Optional[int] = None) -> List[s
     return [row["paper_id"] for row in rows]
 
 
+# 从磁盘缓存读取单篇语义卡片，便于恢复和复用。
 def load_cached_semantic_card(path: Path) -> Optional[Tuple[Dict[str, Any], str]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -683,6 +696,7 @@ def load_cached_semantic_card(path: Path) -> Optional[Tuple[Dict[str, Any], str]
     return card_payload, card_status
 
 
+# 把磁盘缓存中的语义卡片批量恢复到数据库。
 def restore_cached_semantic_cards(
     db_path: Path,
     *,
@@ -750,6 +764,7 @@ def append_error_log(entry: Dict[str, Any]) -> None:
     dump_json(ERROR_LOG_PATH, errors)
 
 
+# 语义卡片统一通过 upsert 写回数据库，避免重复插入逻辑分散。
 def upsert_semantic_card(conn: Any, card: Dict[str, Any], card_status: str) -> None:
     conn.execute(
         """
@@ -766,6 +781,7 @@ def upsert_semantic_card(conn: Any, card: Dict[str, Any], card_status: str) -> N
     write_json(semantic_card_cache_path(card["paper_id"]), {"status": card_status, "card": card})
 
 
+# 选择优先生成语义卡片的候选论文集合。
 def select_candidate_paper_ids(conn: Any, limit: int) -> List[str]:
     """
     选择优先生成语义卡片的论文集合。
@@ -808,6 +824,7 @@ def select_candidate_paper_ids(conn: Any, limit: int) -> List[str]:
     return candidates[:limit]
 
 
+# 单篇论文语义卡片生成入口，优先复用缓存，必要时调用 LLM 或启发式兜底。
 def generate_card_for_paper(conn: Any, paper_id: str, refresh: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     为单篇论文生成语义卡片，并写回数据库缓存。
@@ -859,6 +876,7 @@ def generate_card_for_paper(conn: Any, paper_id: str, refresh: bool = False) -> 
         raise OpenAIAPIError(f"核心语义能力不可用：为 {paper_id} 生成 PaperSemanticCard 失败。{exc}") from exc
 
 
+# 生成少量示例卡片，供演示和人工抽查。
 def generate_pilot_cards(conn: Any, pilot_ids: Sequence[str], refresh: bool = False) -> List[Dict[str, Any]]:
     cards: List[Dict[str, Any]] = []
     for paper_id in pilot_ids:
@@ -868,6 +886,7 @@ def generate_pilot_cards(conn: Any, pilot_ids: Sequence[str], refresh: bool = Fa
     return cards
 
 
+# 按给定 paper_id 列表批量生成语义卡片。
 def generate_cards_for_paper_ids(
     conn: Any,
     paper_ids: Sequence[str],
@@ -910,6 +929,7 @@ def generate_cards_for_paper_ids(
     }
 
 
+# 持续生成语义卡片直到达到目标数量。
 def generate_cards_until_target(conn: Any, target_count: int, refresh: bool = False) -> int:
     """
     持续生成语义卡片，直到达到目标数量。
@@ -961,6 +981,7 @@ def load_generated_cards(conn: Any, limit: Optional[int] = None) -> List[Dict[st
     return [json.loads(row["semantic_card_json"]) for row in rows]
 
 
+# 以规则方式扫描语义卡片质量问题，供抽样评估使用。
 def quality_issues(card: Dict[str, Any]) -> List[str]:
     issues: List[str] = []
     for field_name in ("domain_tags", "task_tags", "method_tags", "core_contributions", "likely_user_intents"):
@@ -975,6 +996,7 @@ def quality_issues(card: Dict[str, Any]) -> List[str]:
     return issues
 
 
+# 输出语义卡片质量抽样结果。
 def write_quality_check(conn: Any, sample_size: int = DEFAULT_QUALITY_SAMPLE_SIZE) -> Dict[str, Any]:
     """导出一份人工抽查样本，便于检查语义卡片字段质量。"""
 
@@ -1009,6 +1031,7 @@ def write_quality_check(conn: Any, sample_size: int = DEFAULT_QUALITY_SAMPLE_SIZ
     return payload
 
 
+# 统计字段稳定性，帮助观察语义卡片输出的一致性。
 def write_field_stability_report(cards: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     """
     统计关键字段的非空率和分布，评估语义卡片输出是否稳定。
@@ -1060,6 +1083,7 @@ def write_field_stability_report(cards: Sequence[Dict[str, Any]]) -> Dict[str, A
     return payload
 
 
+# 记录当前语义卡片缓存策略，方便回顾设计取舍。
 def write_cache_strategy() -> None:
     content = """
 语义卡片缓存策略
@@ -1086,6 +1110,7 @@ def write_cache_strategy() -> None:
     dump_text(CACHE_STRATEGY_PATH, content)
 
 
+# 把当前提示词和 schema 导出到文件，便于展示和归档。
 def write_prompt_file() -> None:
     prompt_text = f"""# PaperSemanticCard Prompt
 
@@ -1106,6 +1131,7 @@ Model Default: {OPENAI_MODEL}
     dump_text(PROMPT_PATH, prompt_text)
 
 
+# 汇总生成结果、质量情况和运行时状态，形成反馈报告。
 def write_feedback(
     db_path: Path,
     generated_count: int,
@@ -1152,6 +1178,7 @@ def write_feedback(
     dump_text(FEEDBACK_PATH, content)
 
 
+# CLI 批量构建入口。
 def run_build_command(args: argparse.Namespace) -> None:
     """
     执行语义卡片的完整批处理流程。
@@ -1203,6 +1230,7 @@ def run_build_command(args: argparse.Namespace) -> None:
         print(f"Quality check: {QUALITY_CHECK_CSV_PATH}")
 
 
+# CLI 单篇卡片生成入口。
 def run_generate_paper_command(args: argparse.Namespace) -> None:
     ensure_output_dir()
     write_prompt_file()
@@ -1213,6 +1241,7 @@ def run_generate_paper_command(args: argparse.Namespace) -> None:
         print(json.dumps({"paper_id": args.paper_id, "used_model": used_model, "card": card}, ensure_ascii=False, indent=2))
 
 
+# 脚本入口：根据子命令执行语义卡片流程。
 def main() -> None:
     args = parse_args()
     if args.command is None:
