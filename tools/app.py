@@ -116,7 +116,7 @@ UI_TEXT = {
     "prefer_classic": {"zh": "偏好经典", "en": "Prefer Classic"},
     "prefer_survey": {"zh": "偏好综述", "en": "Prefer Survey"},
     "prefer_diverse": {"zh": "偏好多样", "en": "Prefer Diverse"},
-    "need_explainable_reason": {"zh": "需要解释", "en": "Need Explanation"},
+    #"need_explainable_reason": {"zh": "需要解释", "en": "Need Explanation"},
     "intentframe_raw_json": {"zh": "IntentFrame 原始 JSON", "en": "IntentFrame Raw JSON"},
     "gap_analysis": {"zh": "Gap 分析", "en": "Gap Analysis"},
     "missing_slots": {"zh": "缺失槽位", "en": "Missing Slots"},

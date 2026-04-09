@@ -1,8 +1,8 @@
-﻿"""
-PaperCompass 鏍稿績鏂规硶涓婚摼璺€?
+"""
+PaperCompass 核心方法主链路。
 
-璐熻矗鎶婂墠鍥涢」鑳藉姏涓茶捣鏉ワ細
-query -> 鎰忓浘瑙ｆ瀽 -> 鑱氬悎杩介棶 -> 涓夎矾妫€绱?-> gap 鍒嗘瀽 -> 鎰忓浘閲嶆帓 -> 缁撴灉瑙ｉ噴
+负责把前四项能力串起来：
+query -> 意图解析 -> 聚合追问 -> 三路检索 -> gap 分析 -> 意图重排 -> 结果解释
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ DEFAULT_LLM_MATCH_NEIGHBOR_GAP = 0.025
 DEFAULT_STANDARD_QUERY_SEMANTIC_TOP_N = 6
 DEFAULT_STANDARD_QUERY_SEMANTIC_MIN_FREQUENCY = 2
 QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v4"
-QUERY_MATCH_PROMPT_VERSION = "query_paper_match_v3"
+QUERY_MATCH_PROMPT_VERSION = "query_paper_match_v4"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 DENSE_INDEX_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -81,100 +81,120 @@ DENSE_INDEX_DISK_CACHE_SUBDIR = "dense_indexes"
 DENSE_INDEX_DISK_CACHE_KEEP_PER_DB = 3
 
 DIMENSION_LABELS = {
-    "scene_match": "Scene match",
-    "topic_match": "Topic match",
-    "constraint_match": "Constraint match",
-    "paper_type_match": "Paper type match",
-    "time_preference_match": "Time preference match",
-    "survey_preference_match": "Survey preference match",
-    "scene": "Scene match",
-    "topic": "Topic match",
-    "constraint": "Constraint match",
-    "constraints": "Constraint match",
-    "paper_type": "Paper type match",
-    "paper type": "Paper type match",
-    "time_preference": "Time preference match",
-    "time preference": "Time preference match",
-    "survey_preference": "Survey preference match",
-    "survey preference": "Survey preference match",
+    "scene_match": "场景匹配",
+    "topic_match": "主题匹配",
+    "constraint_match": "约束匹配",
+    "paper_type_match": "论文类型匹配",
+    "time_preference_match": "时间偏好匹配",
+    "survey_preference_match": "综述偏好匹配",
+    "scene": "场景匹配",
+    "topic": "主题匹配",
+    "constraint": "约束匹配",
+    "constraints": "约束匹配",
+    "paper_type": "论文类型匹配",
+    "paper type": "论文类型匹配",
+    "time_preference": "时间偏好匹配",
+    "time preference": "时间偏好匹配",
+    "survey_preference": "综述偏好匹配",
+    "survey preference": "综述偏好匹配",
 }
 
 SLOT_PATH_LABELS = {
-    "search_scene": "Search scene",
-    "research_topic.domain": "Research domain",
-    "research_topic.task": "Research task",
-    "research_topic.problem": "Research problem",
-    "research_topic.keywords": "Topic keywords",
-    "technical_constraints.method": "Method constraint",
-    "technical_constraints.model_family": "Model family constraint",
-    "technical_constraints.dataset": "Dataset constraint",
-    "technical_constraints.metric": "Metric constraint",
-    "technical_constraints.modality": "Modality constraint",
-    "document_attributes.time_range": "Time range",
-    "document_attributes.paper_type": "Paper type",
-    "document_attributes.author_name": "Author",
-    "document_attributes.title_hint": "Title hint",
-    "result_preferences.prefer_recent": "Prefer recent",
-    "result_preferences.prefer_classic": "Prefer classic",
-    "result_preferences.prefer_survey": "Prefer survey",
-    "result_preferences.prefer_diverse": "Prefer diverse results",
-    "result_preferences.need_explainable_reason": "Need explainable reason",
+    "search_scene": "检索场景",
+    "research_topic.domain": "研究领域",
+    "research_topic.task": "研究任务",
+    "research_topic.problem": "研究问题",
+    "research_topic.keywords": "主题关键词",
+    "technical_constraints.method": "方法约束",
+    "technical_constraints.model_family": "模型家族约束",
+    "technical_constraints.dataset": "数据集约束",
+    "technical_constraints.metric": "指标约束",
+    "technical_constraints.modality": "模态约束",
+    "document_attributes.time_range": "时间范围",
+    "document_attributes.paper_type": "论文类型",
+    "document_attributes.author_name": "作者",
+    "document_attributes.title_hint": "标题线索",
+    "result_preferences.prefer_recent": "偏好最新",
+    "result_preferences.prefer_classic": "偏好经典",
+    "result_preferences.prefer_survey": "偏好综述",
+    "result_preferences.prefer_diverse": "偏好多样结果",
+    "result_preferences.need_explainable_reason": "需要可解释理由",
 }
 
 STANDARD_QUERY_SPECS = [
     {
-        "query": "retrieval augmented generation survey",
-        "follow_up_reply": "recent two years, explain why each paper matches",
+        "query": "检索 RAG 综述论文",
+        "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
         "expected_intent_slots": {
             "search_scene": "survey_lookup",
             "research_topic.task": "retrieval-augmented generation",
+            "research_topic.problem": "hallucination mitigation",
             "document_attributes.paper_type": "survey",
-        },
-        "expected_clarification_focus": ["document_attributes.time_range"],
-        "expected_top_result_type": "survey",
-    },
-    {
-        "query": "recent agent memory papers",
-        "expected_intent_slots": {
-            "search_scene": "recent_progress",
-            "research_topic.problem": "memory mechanism",
-        },
-        "expected_clarification_focus": ["document_attributes.paper_type"],
-        "expected_top_result_type": "method",
-    },
-    {
-        "query": "papers by authors of MALT",
-        "follow_up_reply": "explain why they are related",
-        "expected_intent_slots": {"search_scene": "author_trace"},
-        "expected_clarification_focus": ["document_attributes.author_name"],
-        "expected_top_result_type": "author_trace",
-    },
-    {
-        "query": "quality estimation with COMET",
-        "follow_up_reply": "prefer recent work",
-        "expected_intent_slots": {
-            "search_scene": "method_constrained_search",
-            "technical_constraints.metric": "COMET",
-        },
-        "expected_clarification_focus": ["technical_constraints.dataset"],
-        "expected_top_result_type": "method",
-    },
-    {
-        "query": "long context survey papers",
-        "expected_intent_slots": {
-            "search_scene": "survey_lookup",
-            "document_attributes.paper_type": "survey",
+            "result_preferences.prefer_diverse": "no",
+            "result_preferences.need_explainable_reason": "yes",
         },
         "expected_clarification_focus": [],
         "expected_top_result_type": "survey",
     },
     {
-        "query": "benchmark for large language models on reasoning",
+        "query": "最近的 agent memory 论文",
+        "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
+        "expected_intent_slots": {
+            "search_scene": "recent_progress",
+            "research_topic.problem": "memory mechanism",
+            "document_attributes.paper_type": "method",
+            "result_preferences.prefer_survey": "no",
+            "result_preferences.prefer_diverse": "yes",
+        },
+        "expected_clarification_focus": [],
+        "expected_top_result_type": "method",
+    },
+    {
+        "query": "找 MALT 作者的论文",
+        "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
+        "expected_intent_slots": {
+            "search_scene": "author_trace",
+            "document_attributes.time_range": "2023-2026",
+            "document_attributes.paper_type": "method",
+        },
+        "expected_clarification_focus": [],
+        "expected_top_result_type": "author_trace",
+    },
+    {
+        "query": "用 COMET 做质量估计的论文",
+        "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
+        "expected_intent_slots": {
+            "search_scene": "method_constrained_search",
+            "technical_constraints.metric": "COMET",
+            "result_preferences.need_explainable_reason": "yes",
+            "result_preferences.prefer_survey": "no",
+        },
+        "expected_clarification_focus": [],
+        "expected_top_result_type": "method",
+    },
+    {
+        "query": "长上下文论文进展",
+        "follow_up_reply": "时间范围 2023-2026；主题聚焦长上下文建模；论文类型不限（可包含综述）；方法约束不限；模型家族、数据集、指标不限；仅文本模态；作者不限；偏好多样结果否；需要可解释理由否。",
+        "expected_intent_slots": {
+            "search_scene": "recent_progress",
+            "document_attributes.time_range": "2023-2026",
+            "result_preferences.prefer_diverse": "no",
+            "result_preferences.need_explainable_reason": "no",
+        },
+        "expected_clarification_focus": [],
+        "expected_top_result_type": "method",
+    },
+    {
+        "query": "大语言模型推理论文（benchmark 优先）",
+        "follow_up_reply": "时间范围 2023-2026；任务聚焦推理评测；benchmark 优先但不限；方法、模型家族、作者、标题线索不限；指标可包含 Pass@1/GSM8K/MATH；偏好多样结果否；需要可解释理由否。",
         "expected_intent_slots": {
             "research_topic.task": "reasoning",
             "document_attributes.paper_type": "benchmark",
+            "document_attributes.time_range": "2023-2026",
+            "result_preferences.prefer_diverse": "no",
+            "result_preferences.need_explainable_reason": "no",
         },
-        "expected_clarification_focus": ["document_attributes.time_range"],
+        "expected_clarification_focus": [],
         "expected_top_result_type": "benchmark",
     },
     {
@@ -189,7 +209,9 @@ STANDARD_QUERY_SPECS = [
     },
     {
         "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
-        "expected_intent_slots": {"search_scene": "specific_paper_lookup"},
+        "expected_intent_slots": {
+            "search_scene": "specific_paper_lookup",
+        },
         "expected_clarification_focus": [],
         "expected_top_result_type": "specific_paper_lookup",
     },
@@ -212,6 +234,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
 ]
+
 METHOD_LIKE_PAPER_TYPES = {"method", "empirical_study", "application_study", "analysis"}
 
 EXPLANATION_SYSTEM_PROMPT = """You judge whether a candidate paper truly matches the user's academic retrieval intent.
@@ -221,15 +244,16 @@ Do not invent evidence. Return JSON only.
 
 Requirements:
 0. Topic specificity dominates. A paper that is broader, adjacent, or only loosely related to the requested topic must not receive a high score just because it matches paper type, recency, or retrieval score.
-1. `brief_reason` must be concise English in 1-2 sentences.
-2. `matched_dimensions` and `unmet_dimensions` should prefer short human-readable phrases; if you use system dimension ids, only use:
+1. All natural-language output fields must be in Simplified Chinese.
+2. `brief_reason` must be concise Chinese in 1-2 sentences.
+3. `matched_dimensions` and `unmet_dimensions` should prefer short Chinese human-readable phrases; if you use system dimension ids, only use:
    scene_match, topic_match, constraint_match, paper_type_match, time_preference_match, survey_preference_match.
-3. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
-4. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
-5. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
-6. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
-7. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
-8. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
+4. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
+5. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
+6. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
+7. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
+8. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
+9. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
 """
 
 EXPLANATION_SCHEMA = {
@@ -271,15 +295,16 @@ Requirements:
 1. Evaluate every paper independently.
 2. Return exactly one result object per input `paper_id`.
 3. Copy each `paper_id` exactly as provided.
-4. `brief_reason` must be concise English in 1-2 sentences.
-5. `matched_dimensions` and `unmet_dimensions` should prefer short human-readable phrases; if you use system dimension ids, only use:
+4. All natural-language output fields must be in Simplified Chinese.
+5. `brief_reason` must be concise Chinese in 1-2 sentences.
+6. `matched_dimensions` and `unmet_dimensions` should prefer short Chinese human-readable phrases; if you use system dimension ids, only use:
    scene_match, topic_match, constraint_match, paper_type_match, time_preference_match, survey_preference_match.
-6. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
-7. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
-8. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
-9. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
-10. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
-11. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
+7. `match_score` should reflect semantic fit to the query intent, not lexical overlap alone.
+8. `evidence_sufficiency` should reflect whether the provided evidence is enough to justify the recommendation.
+9. If the paper misses the user's core topic, task, or problem, set `main_intent_satisfied=false`, mention the missing topical focus in `unmet_dimensions`, and keep `match_score` conservative.
+10. Survey match, paper-type match, or recency match alone must not outweigh topic drift.
+11. If the paper is strongly on the requested topic but misses only a paper-type or preference requirement, keep `main_intent_satisfied=false` but preserve a moderate or high `match_score`; reserve very low scores for true topic drift.
+12. If the user asks for explanations, rationales, interpretability, or explainable reasons, papers that only use a QE metric, benchmark, confidence score, or evaluation dataset without producing interpretable reasons do not satisfy the main intent.
 """
 
 
@@ -399,7 +424,10 @@ def localize_user_label(value: Any) -> str:
         return DIMENSION_LABELS[text]
     if text.startswith("Matched dimension:"):
         _, _, dimension = text.partition(":")
-        return "Matched dimension: " + localize_dimension_label(dimension)
+        return "命中维度：" + localize_dimension_label(dimension)
+    if text.startswith("命中维度："):
+        _, _, dimension = text.partition("：")
+        return "命中维度：" + localize_dimension_label(dimension)
     return text
 
 
@@ -410,12 +438,12 @@ def localize_user_label_list(values: Iterable[Any], limit: int = 8) -> List[str]
 def build_match_reason_fallback(matched_dimensions: Sequence[str], main_intent_satisfied: bool) -> str:
     localized_dimensions = localize_user_label_list(matched_dimensions, limit=3)
     if localized_dimensions:
-        prefix = "The paper matches on: "
-        suffix = "; overall the main intent is satisfied." if main_intent_satisfied else "; overall the intent match is partial."
-        return prefix + "; ".join(localized_dimensions) + suffix
+        prefix = "该论文命中维度："
+        suffix = "；整体满足主意图。" if main_intent_satisfied else "；整体仅部分匹配主意图。"
+        return prefix + "；".join(localized_dimensions) + suffix
     if main_intent_satisfied:
-        return "The paper is broadly aligned with the current query and the available evidence supports the recommendation."
-    return "The paper is somewhat related, but the match evidence is still limited."
+        return "该论文与当前查询整体一致，现有证据足以支持推荐。"
+    return "该论文有一定相关性，但匹配证据仍然有限。"
 
 
 def coerce_query_match_score(value: Any, default: float = 0.0) -> float:
@@ -459,11 +487,24 @@ def coerce_query_match_bool(value: Any) -> bool:
 
 
 def normalize_query_paper_match_payload(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
-    matched_dimensions = localize_user_label_list(raw_payload.get("matched_dimensions", []), limit=4)
-    unmet_dimensions = localize_user_label_list(raw_payload.get("unmet_dimensions", []), limit=4)
-    brief_reason = clean_text(raw_payload.get("brief_reason", ""))
     main_intent_satisfied = coerce_query_match_bool(raw_payload.get("main_intent_satisfied"))
-    if not brief_reason:
+    matched_dimensions = [
+        value
+        for value in localize_user_label_list(raw_payload.get("matched_dimensions", []), limit=4)
+        if contains_chinese(value)
+    ]
+    unmet_dimensions = [
+        value
+        for value in localize_user_label_list(raw_payload.get("unmet_dimensions", []), limit=4)
+        if contains_chinese(value)
+    ]
+    if not matched_dimensions and main_intent_satisfied:
+        matched_dimensions = ["主题匹配"]
+    if not unmet_dimensions and not main_intent_satisfied:
+        unmet_dimensions = ["主意图未满足"]
+
+    brief_reason = clean_text(raw_payload.get("brief_reason", ""))
+    if not brief_reason or not contains_chinese(brief_reason):
         brief_reason = build_match_reason_fallback(matched_dimensions, main_intent_satisfied)
     return {
         "main_intent_satisfied": main_intent_satisfied,
@@ -818,14 +859,14 @@ def append_error_log(entry: Dict[str, Any]) -> None:
 
 
 def write_prompt_file() -> None:
-    content = f"""# Query-Paper 鍖归厤鎻愮ず璇?
+    content = f"""# Query-Paper 匹配提示词
 
-榛樿妯″瀷: {OPENAI_MODEL}
+默认模型: {OPENAI_MODEL}
 
-## 绯荤粺鎻愮ず璇?
+## 系统提示词
 {EXPLANATION_SYSTEM_PROMPT}
 
-## 杈撳嚭 Schema
+## 输出 Schema
 ```json
 {json.dumps(EXPLANATION_SCHEMA, ensure_ascii=False, indent=2)}
 ```
@@ -833,8 +874,6 @@ def write_prompt_file() -> None:
     dump_text(EXPLANATION_PROMPT_PATH, content)
     if LEGACY_EXPLANATION_PROMPT_PATH != EXPLANATION_PROMPT_PATH:
         dump_text(LEGACY_EXPLANATION_PROMPT_PATH, content)
-
-
 def dense_index_cache_key(db_path: Path) -> str:
     resolved = db_path.resolve(strict=False)
     try:
@@ -1784,9 +1823,12 @@ def generate_query_paper_match_batch(
 
 
 def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    missing_slots = list(intent_frame.get("missing_slots", []))
+    gap_excluded_slots = {"result_preferences.need_explainable_reason"}
+    missing_slots = [slot for slot in list(intent_frame.get("missing_slots", [])) if slot not in gap_excluded_slots]
     ambiguous_dimensions = []
     for path_name, spec in intent.SLOT_SPECS.items():
+        if path_name in gap_excluded_slots:
+            continue
         slot = intent.get_slot(intent_frame, spec["path"])
         if slot["status"] == "ambiguous":
             ambiguous_dimensions.append(path_name)
@@ -1808,26 +1850,28 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
             if item.get("query_paper_match")
         ]
         llm_matched_dimensions = clean_string_list(
-            [
-                dimension
+            (
+                localize_user_label(dimension)
                 for item in top_slice
                 for dimension in item.get("query_paper_match", {}).get("matched_dimensions", [])
-            ],
+            ),
             limit=6,
         )
         llm_unmet_dimensions = clean_string_list(
-            [
-                dimension
+            (
+                localize_user_label(dimension)
                 for item in top_slice
                 for dimension in item.get("query_paper_match", {}).get("unmet_dimensions", [])
-            ],
+            ),
             limit=6,
         )
+        llm_matched_dimensions = [value for value in llm_matched_dimensions if contains_chinese(value)]
+        llm_unmet_dimensions = [value for value in llm_unmet_dimensions if contains_chinese(value)]
 
         if avg_topic >= 0.5:
             matched_dimensions.append("topic_match")
         else:
-            evidence_gap.append("Top-K results are still not concentrated enough on the requested topic.")
+            evidence_gap.append("当前 Top-K 结果在目标主题上的集中度仍不足。")
 
         confirmed_constraints = [
             path_name
@@ -1839,37 +1883,38 @@ def build_gap_report(intent_frame: Dict[str, Any], ranked_results: Sequence[Dict
             if avg_constraint >= 0.45:
                 matched_dimensions.append("constraint_match")
             else:
-                evidence_gap.append("Technical constraints are not covered consistently enough in the current Top-K.")
+                evidence_gap.append("当前 Top-K 对技术约束的覆盖仍不稳定。")
 
         requested_paper_type = intent.get_slot(intent_frame, intent.SLOT_SPECS["document_attributes.paper_type"]["path"])
         if requested_paper_type["status"] == "confirmed":
             if paper_type_hits >= max(2, len(top_slice) // 3):
                 matched_dimensions.append("paper_type_match")
             else:
-                evidence_gap.append("The requested paper type is still underrepresented in Top-K.")
+                evidence_gap.append("当前 Top-K 中目标论文类型占比仍偏低。")
 
         prefer_survey = intent.get_slot(intent_frame, intent.SLOT_SPECS["result_preferences.prefer_survey"]["path"])
         if prefer_survey["status"] == "confirmed" and prefer_survey["value"] == "yes" and survey_hits == 0:
-            evidence_gap.append("The user prefers surveys, but no survey appears in the current Top-K.")
+            evidence_gap.append("用户偏好综述，但当前 Top-K 中未出现综述论文。")
 
         if match_scores and sum(match_scores) / len(match_scores) < 0.55:
-            evidence_gap.append("LLM query-paper match scores remain weak for the current Top-K.")
+            evidence_gap.append("当前 Top-K 的 LLM query-paper 匹配得分整体偏弱。")
         matched_dimensions.extend(llm_matched_dimensions[:3])
         evidence_gap.extend(llm_unmet_dimensions[:2])
 
     if missing_slots:
-        why_broad.append("Some intent slots are still missing, so retrieval and reranking must stay broad.")
-        improvements.append("Answer the missing slots first: " + "; ".join(missing_slots[:6]))
+        why_broad.append("部分意图槽位仍缺失，检索与重排需要保持较宽召回。")
+        localized_missing_slots = localize_user_label_list(missing_slots, limit=6)
+        improvements.append("优先补齐这些缺失槽位：" + "；".join(localized_missing_slots))
     if ambiguous_dimensions:
-        why_broad.append("Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.")
+        why_broad.append("部分槽位仍存在歧义，系统会避免在这些维度过度收敛。")
     if evidence_gap:
         why_broad.extend(evidence_gap[:2])
 
     if not improvements:
         if evidence_gap:
-            improvements.append("Add method, paper type, or a stronger title/entity hint to narrow the results further.")
+            improvements.append("可补充方法约束、论文类型或更明确的标题/实体线索，以进一步收敛结果。")
         else:
-            improvements.append("Current results are already concentrated enough to inspect Top-K directly.")
+            improvements.append("当前结果已较为集中，可直接查看 Top-K。")
 
     return {
         "query_gap": localize_user_label_list(missing_slots, limit=6),
@@ -2130,7 +2175,7 @@ def rerank_candidates(
         reasons = []
         if match_payload.get("brief_reason"):
             reasons.append(match_payload["brief_reason"])
-        reasons.extend(f"Matched dimension: {dimension}" for dimension in matched_dimensions[:2])
+        reasons.extend(f"命中维度：{dimension}" for dimension in matched_dimensions[:2])
         main_intent_bonus = 0.12 if match_payload["main_intent_satisfied"] else -0.10
         main_intent_penalty = 0.08 if (not match_payload["main_intent_satisfied"] and match_payload["match_score"] < 0.65) else 0.0
         final_score = clamp_score(
@@ -2714,25 +2759,25 @@ def write_chain_feedback(
     runs_with_follow_up = sum(1 for item in demo_runs if item.get("follow_up_reply"))
     content = "\n".join(
         [
-            "鏍稿績閾捐矾鏋勫缓瀹屾垚",
+            "核心链路构建完成",
             "",
-            "杩愯淇℃伅",
-            f"- 鏁版嵁搴撴枃浠? {db_path}",
-            f"- OpenAI 鍙敤: {openai_available}",
-            f"- OpenAI 鐘舵€佽鏄? {openai_message}",
-            f"- 婕旂ず query 鏁伴噺: {len(demo_runs)}",
-            f"- 甯?follow-up 鐨勬紨绀烘暟閲? {runs_with_follow_up}",
-            f"- 棣栬疆闇€瑕佽拷闂殑婕旂ず鏁伴噺: {clarification_runs}",
+            "运行信息",
+            f"- 数据库文件: {db_path}",
+            f"- OpenAI 可用: {openai_available}",
+            f"- OpenAI 状态说明: {openai_message}",
+            f"- 演示 query 数量: {len(demo_runs)}",
+            f"- 带 follow-up 的演示数量: {runs_with_follow_up}",
+            f"- 首轮需要追问的演示数量: {clarification_runs}",
             "",
-            "杈撳嚭鏂囦欢",
-            f"- 鎻愮ず璇? {relative_to_project(EXPLANATION_PROMPT_PATH)}",
-            f"- 婕旂ず缁撴灉: {relative_to_project(CHAIN_DEMOS_PATH)}",
-            f"- gap 鎶ュ憡: {relative_to_project(GAP_REPORTS_PATH)}",
-            f"- 鎺掑簭璇勪及: {relative_to_project(RANK_RESULTS_PATH)}",
-            f"- 瑙ｉ噴鏍蜂緥: {relative_to_project(EXPLANATION_SAMPLES_PATH)}",
-            f"- 鏍囧噯鏌ヨ: {relative_to_project(STANDARD_QUERIES_PATH)}",
-            f"- 鍥炲綊鎶ュ憡: {relative_to_project(REGRESSION_REPORT_PATH)}",
-            f"- 婕旂ず璇存槑: {relative_to_project(DEMO_WALKTHROUGH_PATH)}",
+            "输出文件",
+            f"- 提示词: {relative_to_project(EXPLANATION_PROMPT_PATH)}",
+            f"- 演示结果: {relative_to_project(CHAIN_DEMOS_PATH)}",
+            f"- gap 报告: {relative_to_project(GAP_REPORTS_PATH)}",
+            f"- 排序评估: {relative_to_project(RANK_RESULTS_PATH)}",
+            f"- 解释样例: {relative_to_project(EXPLANATION_SAMPLES_PATH)}",
+            f"- 标准查询: {relative_to_project(STANDARD_QUERIES_PATH)}",
+            f"- 回归报告: {relative_to_project(REGRESSION_REPORT_PATH)}",
+            f"- 演示说明: {relative_to_project(DEMO_WALKTHROUGH_PATH)}",
         ]
     )
     dump_text(FEEDBACK_PATH, content)
