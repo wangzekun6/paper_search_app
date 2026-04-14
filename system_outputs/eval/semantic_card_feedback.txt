@@ -3,9 +3,9 @@
 
 执行范围
 - 数据库文件: C:\Users\czk30\Desktop\bishe2\PaperCompass-main\system_outputs\runtime\papercompass.db
-- OpenAI 模型默认值: qwen-plus
+- OpenAI 模型默认值: gpt-5.1
 - OpenAI 连通状态: True
-- OpenAI 连通说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK
+- OpenAI 连通说明: OpenAI Key 可用，模型 `gpt-5.1` 返回：OK
 - 生成卡片总数: 5
 - pilot 试跑卡片数: 2
 - 质量检查样本数: 5

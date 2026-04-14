@@ -1,7 +1,7 @@
 # PaperSemanticCard Prompt
 
 Prompt Version: semantic_v1
-Model Default: qwen-plus
+Model Default: gpt-5.1
 
 ## System Prompt
 You are building structured semantic cards for an academic paper retrieval system.

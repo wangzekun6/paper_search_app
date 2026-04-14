@@ -15,29 +15,36 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from . import chain, intent, retrieval, semantic, semantic_backfill
+from . import retrieval
 from .config import (
     APP_STATE_PATH,
-    DATASET_DIR,
     STANDARD_QUERIES_PATH,
     SYSTEM_DB_PATH,
+    build_dataset_source_fingerprint,
+    build_dataset_source_info,
     cleanup_runtime_databases,
     create_versioned_runtime_db_path,
     ensure_system_layout,
     get_active_runtime_db_path,
+    get_default_dataset_source,
+    materialize_dataset_source_for_build,
     merge_app_state,
     read_json,
+    relative_to_project,
     resolve_dataset_root,
 )
 
 
-DEFAULT_DATA_ROOT = DATASET_DIR
+DEFAULT_DATA_ROOT = get_default_dataset_source()
 DEFAULT_DB_PATH = SYSTEM_DB_PATH
 DEFAULT_QUERY_JSON_PATH = retrieval.DEFAULT_QUERY_JSON_PATH
 DEFAULT_QUERY_TEXT_PATH = retrieval.DEFAULT_QUERY_TEXT_PATH
-DEFAULT_SEMANTIC_TARGET_COUNT = semantic.DEFAULT_TARGET_COUNT
-DEFAULT_PILOT_COUNT = semantic.DEFAULT_PILOT_COUNT
+DEFAULT_SEMANTIC_TARGET_COUNT = 100
+DEFAULT_PILOT_COUNT = 5
 DEFAULT_SEMANTIC_BACKFILL_MODE = "standard"
+DEFAULT_CHAIN_TOP_K = 5
+DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 40
+DEFAULT_CHAIN_EXPLAIN_LIMIT = 5
 
 # 把检索模式映射到具体实现，方便前端和 CLI 统一透传参数。
 SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
@@ -46,6 +53,50 @@ SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
     "hybrid": retrieval.search_hybrid,
 }
 STANDARD_QUERIES_CACHE: Dict[str, Any] = {"mtime_ns": None, "value": None}
+DEMO_QUERY_SPECS: List[Dict[str, Any]] = [
+    {
+        "query": "我想了解 retrieval-augmented generation evaluation 方向的重要论文。",
+    },
+    {
+        "query": "我想系统了解 long-context LLMs 的代表性论文。",
+    },
+    {
+        "query": "我想看近几年 speech-to-speech translation 方向的代表性论文。",
+    },
+    {
+        "query": "我想看 translation quality estimation 方向近几年的重要论文。",
+    },
+    {
+        "query": "我想了解 prompt optimization for large language models 的代表性论文。",
+    },
+    {
+        "query": "我想了解 retrieval-augmented generation for medical QA 的代表性论文。",
+    },
+]
+
+
+def _chain_module():
+    from . import chain
+
+    return chain
+
+
+def _intent_module():
+    from . import intent
+
+    return intent
+
+
+def _semantic_module():
+    from . import semantic
+
+    return semantic
+
+
+def _semantic_backfill_module():
+    from . import semantic_backfill
+
+    return semantic_backfill
 
 
 # 默认数据库路径统一从运行态配置读取。
@@ -144,6 +195,7 @@ def load_project_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     if not database_path.exists():
         return stats
 
+    semantic = _semantic_module()
     with retrieval.connect_db(database_path) as conn:
         stats["semantic_cards"] = semantic.current_card_count(conn)
         stats["intent_histories"] = int(conn.execute("SELECT COUNT(*) FROM search_history").fetchone()[0])
@@ -158,6 +210,7 @@ def restore_semantic_card_cache(
     refresh: bool = False,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
+    semantic = _semantic_module()
     return semantic.restore_cached_semantic_cards(database_path, refresh=refresh)
 
 
@@ -167,12 +220,22 @@ def start_semantic_backfill(
     *,
     mode: str = DEFAULT_SEMANTIC_BACKFILL_MODE,
     refresh: bool = False,
+    target_count: int | None = None,
+    target_ratio: float | None = None,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
-    return semantic_backfill.start_background_semantic_backfill(database_path, mode=mode, refresh=refresh)
+    semantic_backfill = _semantic_backfill_module()
+    return semantic_backfill.start_background_semantic_backfill(
+        database_path,
+        mode=mode,
+        refresh=refresh,
+        target_count=target_count,
+        target_ratio=target_ratio,
+    )
 
 
 def get_semantic_backfill_status() -> Dict[str, Any]:
+    semantic_backfill = _semantic_backfill_module()
     return semantic_backfill.get_semantic_backfill_status()
 
 
@@ -193,10 +256,13 @@ def search_project(
 def build_semantic_assets(
     db_path: str | Path | None = None,
     target_count: int = DEFAULT_SEMANTIC_TARGET_COUNT,
+    target_ratio: Optional[float] = None,
     pilot_count: int = DEFAULT_PILOT_COUNT,
     refresh: bool = False,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
+    chain = _chain_module()
+    semantic = _semantic_module()
     semantic.ensure_output_dir()
     semantic.write_prompt_file()
     openai_available = semantic.can_use_openai()
@@ -204,6 +270,12 @@ def build_semantic_assets(
     cache_restore = semantic.restore_cached_semantic_cards(database_path, refresh=False)
 
     with retrieval.connect_db(database_path) as conn:
+        total_papers = semantic.total_paper_count(conn)
+        resolved_target_count = semantic.resolve_target_count(
+            total_papers,
+            target_count=target_count,
+            target_ratio=target_ratio,
+        )
         if pilot_count > 0:
             pilot_ids = semantic.select_candidate_paper_ids(conn, max(pilot_count, 5))[:pilot_count]
             pilot_cards = semantic.generate_pilot_cards(conn, pilot_ids, refresh=refresh)
@@ -212,8 +284,8 @@ def build_semantic_assets(
 
         semantic.dump_json(semantic.PILOT_OUTPUT_PATH, pilot_cards)
 
-        generated_count = semantic.generate_cards_until_target(conn, target_count, refresh=refresh)
-        generated_cards = semantic.load_generated_cards(conn, limit=target_count)
+        generated_count = semantic.generate_cards_until_target(conn, resolved_target_count, refresh=refresh)
+        generated_cards = semantic.load_generated_cards(conn, limit=resolved_target_count)
         semantic.dump_json(semantic.SAMPLE_OUTPUT_PATH, generated_cards)
 
         quality_payload = semantic.write_quality_check(conn, sample_size=semantic.DEFAULT_QUALITY_SAMPLE_SIZE)
@@ -239,6 +311,9 @@ def build_semantic_assets(
     )
     return {
         "db_path": str(database_path),
+        "target_count_requested": target_count,
+        "target_ratio_requested": target_ratio,
+        "resolved_target_count": resolved_target_count,
         "generated_count": generated_count,
         "pilot_cards": len(pilot_cards),
         "quality_sample_size": quality_payload.get("sample_size", 0),
@@ -262,22 +337,86 @@ def build_project(
     refresh_semantic_cards: bool = False,
     auto_semantic_backfill: bool = True,
     semantic_backfill_mode: str = DEFAULT_SEMANTIC_BACKFILL_MODE,
+    store_raw_json: bool = False,
+    force_rebuild: bool = False,
 ) -> Dict[str, Any]:
     ensure_system_layout()
     data_root_path = resolve_dataset_root(data_root)
+    source_fingerprint = build_dataset_source_fingerprint(data_root_path)
+    materialized_data_root = data_root_path
+    dataset_source = build_dataset_source_info(data_root_path)
     requested_db_path = resolve_project_db_path(db_path)
     active_db_path = get_active_runtime_db_path()
     database_path = requested_db_path
     if active_db_path.exists() and requested_db_path.resolve(strict=False) == active_db_path.resolve(strict=False):
         database_path = create_versioned_runtime_db_path()
     query_payload: Optional[Dict[str, Any]] = None
+    reused_existing_build = False
 
-    database_stats = retrieval.build_database(data_root_path, database_path)
-    if active_db_path.exists() and active_db_path.resolve(strict=False) != database_path.resolve(strict=False):
-        runtime_backup = retrieval.backup_runtime_tables(active_db_path)
-        with retrieval.connect_db(database_path) as conn:
-            retrieval.restore_runtime_tables(conn, runtime_backup)
-    semantic_cache_restore = semantic.restore_cached_semantic_cards(database_path, refresh=False)
+    if requested_db_path.exists() and not retrieval.load_build_runtime_metadata(requested_db_path):
+        state = read_json(APP_STATE_PATH, {})
+        last_build = state.get("last_build") if isinstance(state, dict) else None
+        last_build_db_path = Path(str(last_build.get("db_path"))) if isinstance(last_build, dict) and last_build.get("db_path") else None
+        last_build_data_root = (
+            Path(str(last_build.get("data_root")))
+            if isinstance(last_build, dict) and last_build.get("data_root")
+            else None
+        )
+        if (
+            last_build_db_path is not None
+            and last_build_data_root is not None
+            and last_build_db_path.resolve(strict=False) == requested_db_path.resolve(strict=False)
+            and last_build_data_root.resolve(strict=False) == data_root_path.resolve(strict=False)
+        ):
+            with retrieval.connect_db(requested_db_path) as conn:
+                retrieval.write_build_runtime_metadata(
+                    conn,
+                    source_fingerprint=source_fingerprint,
+                    store_raw_json=True,
+                )
+                conn.commit()
+
+    if not force_rebuild and retrieval.database_matches_build(
+        requested_db_path,
+        source_fingerprint=source_fingerprint,
+        store_raw_json=store_raw_json,
+    ):
+        database_path = requested_db_path
+        database_stats = retrieval.load_database_stats(database_path)
+        reused_existing_build = True
+    else:
+        materialized_data_root = materialize_dataset_source_for_build(data_root_path)
+        dataset_source["materialized_path"] = str(materialized_data_root.resolve(strict=False))
+        dataset_source["materialized_display_path"] = relative_to_project(materialized_data_root)
+        dataset_source["materialized_kind"] = "directory" if materialized_data_root.is_dir() else dataset_source["kind"]
+        dataset_source["materialized_from_cache"] = (
+            materialized_data_root.resolve(strict=False) != data_root_path.resolve(strict=False)
+        )
+        database_stats = retrieval.build_database(
+            materialized_data_root,
+            database_path,
+            store_raw_json=store_raw_json,
+            source_fingerprint=source_fingerprint,
+        )
+        if active_db_path.exists() and active_db_path.resolve(strict=False) != database_path.resolve(strict=False):
+            runtime_backup = retrieval.backup_runtime_tables(active_db_path)
+            with retrieval.connect_db(database_path) as conn:
+                retrieval.restore_runtime_tables(conn, runtime_backup)
+    if "materialized_path" not in dataset_source:
+        dataset_source["materialized_path"] = str(materialized_data_root.resolve(strict=False))
+        dataset_source["materialized_display_path"] = relative_to_project(materialized_data_root)
+        dataset_source["materialized_kind"] = "directory" if materialized_data_root.is_dir() else dataset_source["kind"]
+        dataset_source["materialized_from_cache"] = (
+            materialized_data_root.resolve(strict=False) != data_root_path.resolve(strict=False)
+        )
+    semantic_cache_restore: Dict[str, Any] = {
+        "db_path": str(database_path),
+        "skipped": True,
+        "reason": "semantic-build-not-requested",
+    }
+    if build_semantic_layer or auto_semantic_backfill:
+        semantic = _semantic_module()
+        semantic_cache_restore = semantic.restore_cached_semantic_cards(database_path, refresh=False)
     if generate_query_debug:
         query_payload = retrieval.run_debug_queries(
             db_path=database_path,
@@ -286,14 +425,18 @@ def build_project(
             top_k=top_k,
         )
 
-    dense_cache_warm_elapsed = None
-    dense_cache_warm_error = ""
+    query_index_warm_elapsed = None
+    query_index_warm_error = ""
+    query_index_warm_summary = None
     try:
         warm_started_at = time.perf_counter()
-        chain.build_dense_index(database_path)
-        dense_cache_warm_elapsed = round(time.perf_counter() - warm_started_at, 4)
+        query_index_warm_summary = retrieval.ensure_query_runtime_artifacts(database_path, build_exact_cache=True)
+        query_index_warm_summary["dense_ready"] = bool(query_index_warm_summary.get("hot_fts_ready"))
+        query_index_warm_summary["dense_backend"] = "hot_fts_multi_query"
+        query_index_warm_summary["exact_backend"] = "hot_fts_candidate_rescore"
+        query_index_warm_elapsed = round(time.perf_counter() - warm_started_at, 4)
     except Exception as exc:
-        dense_cache_warm_error = str(exc)
+        query_index_warm_error = str(exc)
 
     semantic_summary = None
     if build_semantic_layer:
@@ -306,6 +449,7 @@ def build_project(
 
     semantic_backfill_summary = None
     if auto_semantic_backfill:
+        semantic_backfill = _semantic_backfill_module()
         semantic_backfill_summary = semantic_backfill.start_background_semantic_backfill(
             database_path,
             mode=semantic_backfill_mode,
@@ -314,19 +458,32 @@ def build_project(
 
     payload = {
         "data_root": str(data_root_path.resolve()),
+        "materialized_data_root": str(materialized_data_root.resolve(strict=False)),
+        "source_fingerprint": source_fingerprint,
+        "dataset_source": dataset_source,
         "db_path": str(database_path.resolve()),
         "database_stats": database_stats,
+        "reused_existing_build": reused_existing_build,
+        "force_rebuild": bool(force_rebuild),
+        "store_raw_json": bool(store_raw_json),
         "semantic_cache_restore": semantic_cache_restore,
         "query_debug_enabled": generate_query_debug,
         "query_count": query_payload["query_count"] if query_payload else 0,
-        "dense_index_cache_warmed": dense_cache_warm_error == "",
-        "dense_index_cache_warm_elapsed": dense_cache_warm_elapsed,
-        "dense_index_cache_warm_error": dense_cache_warm_error,
+        "query_index_warmed": query_index_warm_error == "",
+        "query_index_warm_summary": query_index_warm_summary,
+        "query_index_warm_elapsed": query_index_warm_elapsed,
+        "query_index_warm_error": query_index_warm_error,
         "semantic_layer_enabled": build_semantic_layer,
         "semantic_layer": semantic_summary,
         "semantic_backfill": semantic_backfill_summary,
     }
-    merge_app_state({"last_build": payload, "runtime_db_path": str(database_path.resolve())})
+    merge_app_state(
+        {
+            "last_build": payload,
+            "runtime_db_path": str(database_path.resolve()),
+            "dataset_source": dataset_source,
+        }
+    )
     deleted_runtime_dbs = cleanup_runtime_databases(
         keep_latest=2,
         protected_paths=[database_path, active_db_path],
@@ -344,6 +501,7 @@ def generate_semantic_card_for_paper(
     refresh: bool = False,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
+    semantic = _semantic_module()
     semantic.ensure_output_dir()
     semantic.write_prompt_file()
 
@@ -369,6 +527,7 @@ def analyze_query_intent(
     persist: bool = True,
 ) -> Dict[str, Any]:
     database_path = resolve_project_db_path(db_path)
+    intent = _intent_module()
     prior_frame = None
     prior_history_id = history_id
     if history_id is not None:
@@ -402,6 +561,7 @@ def build_intent_assets(
     queries: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     database_path = resolve_project_db_path(db_path)
+    intent = _intent_module()
     if database_path.exists():
         require_project_database(database_path)
     summary = intent.build_intent_assets(queries=queries)
@@ -415,12 +575,13 @@ def run_project_chain(
     query: str,
     db_path: str | Path | None = None,
     follow_up_reply: Optional[str] = None,
-    top_k: int = chain.DEFAULT_TOP_K,
-    candidate_pool_size: int = chain.DEFAULT_CANDIDATE_POOL_SIZE,
-    explain_limit: int = chain.DEFAULT_EXPLAIN_LIMIT,
+    top_k: int = DEFAULT_CHAIN_TOP_K,
+    candidate_pool_size: int = DEFAULT_CHAIN_CANDIDATE_POOL_SIZE,
+    explain_limit: int = DEFAULT_CHAIN_EXPLAIN_LIMIT,
     stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
+    chain = _chain_module()
     payload = chain.run_core_chain(
         query=query,
         follow_up_reply=follow_up_reply,
@@ -439,9 +600,9 @@ def run_project_chain_session(
     query: str,
     db_path: str | Path | None = None,
     follow_up_reply: Optional[str] = None,
-    top_k: int = chain.DEFAULT_TOP_K,
-    candidate_pool_size: int = chain.DEFAULT_CANDIDATE_POOL_SIZE,
-    explain_limit: int = chain.DEFAULT_EXPLAIN_LIMIT,
+    top_k: int = DEFAULT_CHAIN_TOP_K,
+    candidate_pool_size: int = DEFAULT_CHAIN_CANDIDATE_POOL_SIZE,
+    explain_limit: int = DEFAULT_CHAIN_EXPLAIN_LIMIT,
     persist_history: bool = True,
     stage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
@@ -458,6 +619,7 @@ def run_project_chain_session(
     if persist_history:
         database_path = require_project_database(db_path)
         history_text = query if not follow_up_reply else f"{query}\nFollow-up: {follow_up_reply}"
+        intent = _intent_module()
         history_id = intent.save_intent_frame(database_path, history_text, payload["final_intent_frame"])
     payload["history_id"] = history_id
     return payload
@@ -590,6 +752,7 @@ def get_paper_detail(paper_id: str, db_path: str | Path | None = None) -> Dict[s
 
 # 标准查询会做简单缓存，避免前端每次刷新都重复读取磁盘。
 def load_standard_queries() -> List[Dict[str, Any]]:
+    chain = _chain_module()
     default_value = list(chain.STANDARD_QUERY_SPECS)
     try:
         mtime_ns = STANDARD_QUERIES_PATH.stat().st_mtime_ns
@@ -611,6 +774,18 @@ def load_standard_queries() -> List[Dict[str, Any]]:
     return copy.deepcopy(loaded_value)
 
 
+def load_demo_queries() -> List[Dict[str, Any]]:
+    demo_queries = load_standard_queries()
+    sanitized: List[Dict[str, Any]] = []
+    for item in demo_queries:
+        if not isinstance(item, dict):
+            continue
+        payload = dict(item)
+        payload.pop("follow_up_reply", None)
+        sanitized.append(payload)
+    return sanitized
+
+
 # app_state 负责记录运行期轻量状态，例如最近一次查询信息。
 def load_app_state() -> Dict[str, Any]:
     ensure_system_layout()
@@ -620,11 +795,12 @@ def load_app_state() -> Dict[str, Any]:
 # 生成主链路演示和评估产物。
 def build_chain_assets(
     db_path: str | Path | None = None,
-    top_k: int = chain.DEFAULT_TOP_K,
-    candidate_pool_size: int = chain.DEFAULT_CANDIDATE_POOL_SIZE,
-    explain_limit: int = chain.DEFAULT_EXPLAIN_LIMIT,
+    top_k: int = DEFAULT_CHAIN_TOP_K,
+    candidate_pool_size: int = DEFAULT_CHAIN_CANDIDATE_POOL_SIZE,
+    explain_limit: int = DEFAULT_CHAIN_EXPLAIN_LIMIT,
 ) -> Dict[str, Any]:
     database_path = require_project_database(db_path)
+    chain = _chain_module()
     return chain.build_core_chain_assets(
         db_path=database_path,
         top_k=top_k,
@@ -636,6 +812,7 @@ def build_chain_assets(
 # 统一格式化状态信息，便于 CLI 直接输出。
 def format_status_block(stats: Dict[str, int], db_path: str | Path | None = None) -> str:
     database_path = resolve_project_db_path(db_path)
+    semantic = _semantic_module()
     semantic_backfill_status = get_semantic_backfill_status()
     payload = {
         "db_path": str(database_path),

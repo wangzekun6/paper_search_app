@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import subprocess
 import sys
@@ -30,6 +31,11 @@ BACKFILL_MODES = ("standard", "all")
 TOOLS_ROOT = Path(__file__).resolve().parents[1]
 
 
+def skip_standard_query_prewarm() -> bool:
+    value = str(os.environ.get("SEMANTIC_BACKFILL_SKIP_PREWARM", "") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 # 统一使用 UTC 时间戳记录后台任务状态和日志。
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -48,6 +54,32 @@ def write_semantic_backfill_state(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # 通过 pid 探测后台进程是否仍然存活。
+def _process_is_alive_windows(pid: int) -> bool:
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=False,
+            timeout=10,
+        )
+    except Exception:
+        return False
+
+    rows = list(csv.reader(line for line in (result.stdout or "").splitlines() if line.strip()))
+    if not rows:
+        return False
+    first_row = rows[0]
+    if not first_row:
+        return False
+    first_cell = str(first_row[0]).strip().lower()
+    if first_cell.startswith("info:"):
+        return False
+    return len(first_row) > 1 and str(first_row[1]).strip() == str(pid)
+
+
 def process_is_alive(pid: Any) -> bool:
     try:
         numeric_pid = int(pid)
@@ -55,6 +87,8 @@ def process_is_alive(pid: Any) -> bool:
         return False
     if numeric_pid <= 0:
         return False
+    if os.name == "nt":
+        return _process_is_alive_windows(numeric_pid)
     try:
         os.kill(numeric_pid, 0)
     except ProcessLookupError:
@@ -76,6 +110,9 @@ def get_semantic_backfill_status() -> Dict[str, Any]:
     if status == "running" and not running:
         state = dict(state)
         state["status"] = "stale"
+        state["running"] = False
+        state["stale_detected_at"] = now_iso()
+        write_semantic_backfill_state(state)
         running = False
     state["running"] = running
     return state
@@ -95,6 +132,8 @@ def start_background_semantic_backfill(
     *,
     mode: str = "standard",
     refresh: bool = False,
+    target_count: int | None = None,
+    target_ratio: float | None = None,
 ) -> Dict[str, Any]:
     ensure_system_layout()
     resolved_db_path = db_path.resolve(strict=False)
@@ -122,6 +161,10 @@ def start_background_semantic_backfill(
     ]
     if refresh:
         command.append("--refresh")
+    if target_count is not None:
+        command.extend(["--target-count", str(target_count)])
+    if target_ratio is not None:
+        command.extend(["--target-ratio", str(target_ratio)])
 
     creationflags = 0
     if os.name == "nt":
@@ -148,6 +191,8 @@ def start_background_semantic_backfill(
         "db_path": str(resolved_db_path),
         "mode": mode,
         "refresh": bool(refresh),
+        "target_count": target_count,
+        "target_ratio": target_ratio,
         "started_at": now_iso(),
         "state_path": str(SEMANTIC_BACKFILL_STATE_PATH),
         "log_path": str(SEMANTIC_BACKFILL_LOG_PATH),
@@ -167,7 +212,14 @@ def update_runtime_state(base_state: Dict[str, Any], **patch: Any) -> Dict[str, 
 
 
 # 后台 worker 的实际执行入口：恢复缓存、预热标准查询并可选全量补全。
-def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: bool = False) -> Dict[str, Any]:
+def run_semantic_backfill(
+    db_path: Path,
+    *,
+    mode: str = "standard",
+    refresh: bool = False,
+    target_count: int | None = None,
+    target_ratio: float | None = None,
+) -> Dict[str, Any]:
     resolved_db_path = db_path.resolve(strict=False)
     base_state = {
         "status": "running",
@@ -175,6 +227,8 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
         "db_path": str(resolved_db_path),
         "mode": mode,
         "refresh": bool(refresh),
+        "target_count": target_count,
+        "target_ratio": target_ratio,
         "started_at": now_iso(),
         "log_path": str(SEMANTIC_BACKFILL_LOG_PATH),
         "state_path": str(SEMANTIC_BACKFILL_STATE_PATH),
@@ -188,24 +242,91 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
     with retrieval.connect_db(resolved_db_path) as conn:
         semantic_cards_before = semantic.current_card_count(conn)
         total_papers = semantic.total_paper_count(conn)
+        resolved_target_count = semantic.resolve_target_count(
+            total_papers,
+            target_count=target_count,
+            target_ratio=target_ratio,
+        )
+    update_runtime_state(
+        base_state,
+        cache_restore=cache_restore_summary,
+        target_count=resolved_target_count,
+        target_ratio=target_ratio,
+        total_papers=total_papers,
+        semantic_cards_before=semantic_cards_before,
+    )
 
     generation_enabled = semantic.can_use_openai()
     prewarm_summary: Dict[str, Any] | None = None
+    prewarm_error = ""
     full_backfill_summary: Dict[str, Any] | None = None
+    target_backfill_summary: Dict[str, Any] | None = None
 
     if generation_enabled:
-        prewarm_summary = chain.prewarm_semantic_cards_for_standard_queries(
-            db_path=resolved_db_path,
-            specs=chain.STANDARD_QUERY_SPECS,
-            candidate_pool_size=chain.DEFAULT_CANDIDATE_POOL_SIZE,
-        )
+        if skip_standard_query_prewarm():
+            prewarm_summary = {
+                "skipped": True,
+                "reason": "forced_by_env",
+            }
+        elif mode == "all" and resolved_target_count is None:
+            prewarm_summary = {
+                "skipped": True,
+                "reason": "mode=all prioritizes full-coverage backfill before standard-query prewarm",
+            }
+        else:
+            try:
+                prewarm_summary = chain.prewarm_semantic_cards_for_standard_queries(
+                    db_path=resolved_db_path,
+                    specs=chain.STANDARD_QUERY_SPECS,
+                    candidate_pool_size=chain.DEFAULT_CANDIDATE_POOL_SIZE,
+                )
+            except Exception as exc:
+                prewarm_error = str(exc)
+                append_log_line(f"Semantic prewarm failed but backfill will continue: {prewarm_error}")
         update_runtime_state(
             base_state,
             cache_restore=cache_restore_summary,
             prewarm_summary=prewarm_summary,
+            prewarm_error=prewarm_error,
+            target_count=resolved_target_count,
+            target_ratio=target_ratio,
         )
 
-        if mode == "all":
+        if resolved_target_count is not None:
+            with retrieval.connect_db(resolved_db_path) as conn:
+                current_count_before_target = semantic.current_card_count(conn)
+
+            def progress_callback(progress: Dict[str, Any]) -> None:
+                update_runtime_state(
+                    base_state,
+                    cache_restore=cache_restore_summary,
+                    prewarm_summary=prewarm_summary,
+                    prewarm_error=prewarm_error,
+                    target_count=resolved_target_count,
+                    target_ratio=target_ratio,
+                    target_backfill_summary=progress,
+                )
+
+            with retrieval.connect_db(resolved_db_path) as conn:
+                semantic.generate_cards_until_target(
+                    conn,
+                    resolved_target_count,
+                    refresh=refresh,
+                    allow_heuristic_fallback=False,
+                    progress_callback=progress_callback,
+                )
+                semantic_cards_after = semantic.current_card_count(conn)
+
+            target_backfill_summary = {
+                "target_count": resolved_target_count,
+                "target_ratio": target_ratio,
+                "semantic_cards_before": current_count_before_target,
+                "semantic_cards_after": semantic_cards_after,
+                "new_semantic_cards_generated": max(0, semantic_cards_after - current_count_before_target),
+                "remaining_to_target": max(0, resolved_target_count - semantic_cards_after),
+                "target_reached": semantic_cards_after >= resolved_target_count,
+            }
+        elif mode == "all":
             with retrieval.connect_db(resolved_db_path) as conn:
                 missing_ids = semantic.list_missing_generated_ids(conn)
                 missing_before = len(missing_ids)
@@ -215,6 +336,9 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
                     base_state,
                     cache_restore=cache_restore_summary,
                     prewarm_summary=prewarm_summary,
+                    prewarm_error=prewarm_error,
+                    target_count=resolved_target_count,
+                    target_ratio=target_ratio,
                     full_backfill_summary={
                         "missing_before": missing_before,
                         **progress,
@@ -226,6 +350,7 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
                     conn,
                     missing_ids,
                     refresh=refresh,
+                    allow_heuristic_fallback=False,
                     progress_callback=progress_callback,
                 )
                 missing_after = len(semantic.list_missing_generated_ids(conn))
@@ -249,6 +374,9 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
         "db_path": str(resolved_db_path),
         "mode": mode,
         "refresh": bool(refresh),
+        "target_count_requested": target_count,
+        "target_ratio_requested": target_ratio,
+        "target_count": resolved_target_count,
         "started_at": base_state["started_at"],
         "finished_at": now_iso(),
         "generation_enabled": generation_enabled,
@@ -258,6 +386,8 @@ def run_semantic_backfill(db_path: Path, *, mode: str = "standard", refresh: boo
         "coverage_ratio": round(semantic_cards_after / total_papers, 4) if total_papers else 0.0,
         "cache_restore": cache_restore_summary,
         "prewarm_summary": prewarm_summary,
+        "prewarm_error": prewarm_error,
+        "target_backfill_summary": target_backfill_summary,
         "full_backfill_summary": full_backfill_summary,
         "log_path": str(SEMANTIC_BACKFILL_LOG_PATH),
         "state_path": str(SEMANTIC_BACKFILL_STATE_PATH),
@@ -275,6 +405,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-path", type=Path, default=get_active_runtime_db_path())
     parser.add_argument("--mode", choices=BACKFILL_MODES, default="standard")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--target-count", type=int)
+    parser.add_argument("--target-ratio", type=float)
     parser.add_argument("--background", action="store_true")
     parser.add_argument("--status", action="store_true")
     return parser.parse_args()
@@ -287,10 +419,26 @@ def main() -> None:
         print(get_semantic_backfill_status())
         return
     if args.background:
-        print(start_background_semantic_backfill(args.db_path, mode=args.mode, refresh=args.refresh))
+        print(
+            start_background_semantic_backfill(
+                args.db_path,
+                mode=args.mode,
+                refresh=args.refresh,
+                target_count=args.target_count,
+                target_ratio=args.target_ratio,
+            )
+        )
         return
     try:
-        print(run_semantic_backfill(args.db_path, mode=args.mode, refresh=args.refresh))
+        print(
+            run_semantic_backfill(
+                args.db_path,
+                mode=args.mode,
+                refresh=args.refresh,
+                target_count=args.target_count,
+                target_ratio=args.target_ratio,
+            )
+        )
     except Exception:
         failure = {
             "status": "failed",

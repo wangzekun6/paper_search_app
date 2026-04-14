@@ -1,445 +1,206 @@
 [
   {
-    "query": "retrieval augmented generation survey",
-    "follow_up_reply": "recent two years, explain why each paper matches",
-    "top_k_results": [
-      {
-        "paper_id": "2502.06872",
-        "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
-        "final_score": 0.894423,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Paper type match",
-            "Time preference match",
-            "Survey preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.88,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Directly surveys Retrieval-Augmented Generation for LLMs with a taxonomy and roadmap, focusing on trustworthiness aspects such as reliability, privacy, safety, fairness, explainability, and accountability. It clearly matches the request for a recent survey and structured overview of RAG methods and systems."
-        },
-        "ranking_reasons": [
-          "Directly surveys Retrieval-Augmented Generation for LLMs with a taxonomy and roadmap, focusing on trustworthiness aspects such as reliability, privacy, safety, fairness, explainability, and accountability. It clearly matches the request for a recent survey and structured overview of RAG methods and systems.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Paper type match"
-        ]
-      },
-      {
-        "paper_id": "2502.08826",
-        "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-        "final_score": 0.855125,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Paper type match",
-            "Time preference match",
-            "Survey preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.82,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "A comprehensive and recent survey specifically on multimodal Retrieval-Augmented Generation, covering taxonomies of retrieval, fusion, augmentation, generation, datasets, and evaluation. Although focused on multimodal settings, it closely aligns with the user’s request for RAG overviews and taxonomies."
-        },
-        "ranking_reasons": [
-          "A comprehensive and recent survey specifically on multimodal Retrieval-Augmented Generation, covering taxonomies of retrieval, fusion, augmentation, generation, datasets, and evaluation. Although focused on multimodal settings, it closely aligns with the user’s request for RAG overviews and taxonomies.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Paper type match"
-        ]
-      }
-    ]
+    "query": "检索 RAG 综述论文",
+    "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
+    "top_k_results": []
   },
   {
-    "query": "recent agent memory papers",
-    "follow_up_reply": null,
-    "top_k_results": [
-      {
-        "paper_id": "2502.12110",
-        "title": "A-Mem: Agentic Memory for LLM Agents",
-        "final_score": 0.952974,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Constraint match",
-            "Time preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.97,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Directly proposes an agentic memory system for LLM agents with dynamic organization and long-term memory, exactly targeting how agents store, organize, and retrieve experiences. Clearly aligned with recent progress on memory mechanisms for LLM-based agents."
-        },
-        "ranking_reasons": [
-          "Directly proposes an agentic memory system for LLM agents with dynamic organization and long-term memory, exactly targeting how agents store, organize, and retrieve experiences. Clearly aligned with recent progress on memory mechanisms for LLM-based agents.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
-        ]
-      },
-      {
-        "paper_id": "2502.05589",
-        "title": "On Memory Construction and Retrieval for Personalized Conversational Agents",
-        "final_score": 0.909549,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Constraint match",
-            "Time preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.93,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Focuses on memory construction and retrieval for long-term personalized conversational agents, analyzing memory granularity and proposing a new segment-level memory mechanism, which is central to the requested topic of memory for LLM agents. Fits the recent-progress and retrieval-augmented agent memory focus well."
-        },
-        "ranking_reasons": [
-          "Focuses on memory construction and retrieval for long-term personalized conversational agents, analyzing memory granularity and proposing a new segment-level memory mechanism, which is central to the requested topic of memory for LLM agents. Fits the recent-progress and retrieval-augmented agent memory focus well.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
-        ]
-      },
-      {
-        "paper_id": "2502.05957",
-        "title": "AutoAgent: A Fully-Automated and Zero-Code Framework for LLM Agents",
-        "final_score": 0.746121,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "topic_match (LLM agent framework with vector-store file system as memory)",
-            "Time preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.7,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Proposes an LLM agent framework whose core architecture includes a self-managing file system implemented as a vector database that agents retrieve and understand, directly touching on storage and retrieval of long-term information for agents. While broader than memory alone, it offers concrete design details for agent memory in a tool-using, retrieval-augmented setting."
-        },
-        "ranking_reasons": [
-          "Proposes an LLM agent framework whose core architecture includes a self-managing file system implemented as a vector database that agents retrieve and understand, directly touching on storage and retrieval of long-term information for agents. While broader than memory alone, it offers concrete design details for agent memory in a tool-using, retrieval-augmented setting.",
-          "Matched dimension: Scene match",
-          "Matched dimension: topic_match (LLM agent framework with vector-store file system as memory)"
-        ]
-      }
-    ]
+    "query": "最近的 agent memory 论文",
+    "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
+    "top_k_results": []
   },
   {
-    "query": "papers by authors of MALT",
-    "follow_up_reply": "explain why they are related",
-    "top_k_results": [
-      {
-        "paper_id": "2502.00041",
-        "title": "MALT: Mechanistic Ablation of Lossy Translationin LLMs for a Low-Resource Language: Urdu",
-        "final_score": 0.858695,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Paper type match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.9,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "This is exactly the MALT method (Mechanistic Ablation of Lossy Translation) in LLMs; the user asked about papers by authors of MALT, and this is the core MALT paper itself."
-        },
-        "ranking_reasons": [
-          "This is exactly the MALT method (Mechanistic Ablation of Lossy Translation) in LLMs; the user asked about papers by authors of MALT, and this is the core MALT paper itself.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Paper type match"
-        ]
-      }
-    ]
+    "query": "找 MALT 作者的论文",
+    "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
+    "top_k_results": []
   },
   {
-    "query": "quality estimation with COMET",
-    "follow_up_reply": "prefer recent work",
+    "query": "用 COMET 做质量估计的论文",
+    "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
     "top_k_results": [
       {
         "paper_id": "2502.14429",
         "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-        "final_score": 0.92722,
+        "final_score": 0.406658,
         "query_paper_match": {
           "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match",
-            "Scene match",
-            "Constraint match",
-            "Time preference match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.96,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Directly proposes new COMET-based QE models (Instant Confidence COMET, Early-Exit COMET) for MT quality estimation and reranking, aligning exactly with COMET/COMETQE-focused QE intent. It covers reference-free QE and computation-efficient COMET variants in recent work."
-        },
-        "ranking_reasons": [
-          "Directly proposes new COMET-based QE models (Instant Confidence COMET, Early-Exit COMET) for MT quality estimation and reranking, aligning exactly with COMET/COMETQE-focused QE intent. It covers reference-free QE and computation-efficient COMET variants in recent work.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Scene match"
-        ]
-      },
-      {
-        "paper_id": "2502.12404",
-        "title": "WMT24++: Expanding the Language Coverage of WMT24 to 55 Languages & Dialects",
-        "final_score": 0.825178,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Constraint match",
-            "Time preference match",
-            "Scene match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.83,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Expands WMT24 with multilingual MT data and benchmarks multiple automatic metrics including XCOMET and XCOMET-QE, covering both reference-based and reference-free COMET-style QE. This matches the intent of studying COMET/COMETQE for MT quality estimation."
-        },
-        "ranking_reasons": [
-          "Expands WMT24 with multilingual MT data and benchmarks multiple automatic metrics including XCOMET and XCOMET-QE, covering both reference-based and reference-free COMET-style QE. This matches the intent of studying COMET/COMETQE for MT quality estimation.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Constraint match"
-        ]
-      },
-      {
-        "paper_id": "2502.12755",
-        "title": "Efficient Machine Translation Corpus Generation: Integrating Human-in-the-Loop Post-Editing with Large Language Models",
-        "final_score": 0.762959,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Constraint match",
-            "Time preference match"
+            "场景匹配",
+            "主题匹配",
+            "约束匹配",
+            "综述偏好匹配"
           ],
           "unmet_dimensions": [
-            "Scene match"
+            "论文类型未充分满足",
+            "时间偏好未充分满足"
           ],
-          "match_score": 0.8,
-          "evidence_sufficiency": 0.55,
-          "brief_reason": "Uses COMET-QE as a teacher metric for an online MT QE model within a human-in-the-loop corpus generation system, directly involving COMET-based QE. However, its primary focus is workflow and corpus generation rather than core COMET model methodology."
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.753333,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "Uses COMET-QE as a teacher metric for an online MT QE model within a human-in-the-loop corpus generation system, directly involving COMET-based QE. However, its primary focus is workflow and corpus generation rather than core COMET model methodology.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Constraint match"
+          "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
+        ]
+      },
+      {
+        "paper_id": "2210.15696",
+        "title": "COMET-QE and Active Learning for Low-Resource Machine Translation",
+        "final_score": 0.380883,
+        "query_paper_match": {
+          "main_intent_satisfied": true,
+          "matched_dimensions": [
+            "场景匹配",
+            "主题匹配",
+            "约束匹配",
+            "论文类型匹配"
+          ],
+          "unmet_dimensions": [
+            "时间偏好未充分满足"
+          ],
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.72,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。"
+        },
+        "ranking_reasons": [
+          "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       }
     ]
   },
   {
-    "query": "long context survey papers",
-    "follow_up_reply": null,
+    "query": "长上下文论文进展",
+    "follow_up_reply": "时间范围 2023-2026；主题聚焦长上下文建模；论文类型不限（可包含综述）；方法约束不限；模型家族、数据集、指标不限；仅文本模态；作者不限；偏好多样结果否；需要可解释理由否。",
     "top_k_results": [
       {
-        "paper_id": "2502.12665",
-        "title": "A2ATS: Retrieval-Based KV Cache Reduction via Windowed Rotary Position Embedding and Query-Aware Vector Quantization",
-        "final_score": 0.453177,
+        "paper_id": "2406.07138",
+        "title": "Never Miss A Beat: An Efficient Recipe for Context Window Extension of Large Language Models with Consistent “Middle” Enhancement",
+        "final_score": 0.729331,
         "query_paper_match": {
-          "main_intent_satisfied": false,
+          "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match"
+            "场景匹配",
+            "主题匹配",
+            "约束匹配",
+            "论文类型匹配"
           ],
           "unmet_dimensions": [
-            "Survey preference match",
-            "Paper type match"
+            "时间偏好未充分满足"
           ],
-          "match_score": 0.65,
-          "evidence_sufficiency": 0.72,
-          "brief_reason": "Directly tackles efficient serving of long-context LLMs via KV cache reduction with windowed RoPE and query-aware vector quantization, aligning well with long-context handling but as a specific technique paper, not a survey of approaches."
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.7,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "Directly tackles efficient serving of long-context LLMs via KV cache reduction with windowed RoPE and query-aware vector quantization, aligning well with long-context handling but as a specific technique paper, not a survey of approaches.",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       },
       {
-        "paper_id": "2502.00791",
-        "title": "Vision-centric Token Compression in Large Language Model",
-        "final_score": 0.344679,
+        "paper_id": "2306.15595",
+        "title": "Extending Context Window of Large Language Models via Position Interpolation",
+        "final_score": 0.3428,
         "query_paper_match": {
           "main_intent_satisfied": false,
           "matched_dimensions": [
-            "Topic match"
+            "场景匹配",
+            "约束匹配",
+            "论文类型匹配"
           ],
           "unmet_dimensions": [
-            "Survey preference match",
-            "Paper type match"
+            "时间偏好未充分满足",
+            "主意图未满足"
           ],
-          "match_score": 0.6,
-          "evidence_sufficiency": 0.72,
-          "brief_reason": "Proposes a vision-centric token compression method (Vist) explicitly aimed at efficient long in-context text processing and extending LLM context length, fitting the long-context modeling topic but as a specific method paper, not a survey."
+          "match_score": 0.6656,
+          "evidence_sufficiency": 0.633333,
+          "brief_reason": "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体仅部分匹配主意图。"
         },
         "ranking_reasons": [
-          "Proposes a vision-centric token compression method (Vist) explicitly aimed at efficient long in-context text processing and extending LLM context length, fitting the long-context modeling topic but as a specific method paper, not a survey.",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体仅部分匹配主意图。",
+          "命中维度：场景匹配",
+          "命中维度：约束匹配"
         ]
       },
       {
-        "paper_id": "2502.05589",
-        "title": "On Memory Construction and Retrieval for Personalized Conversational Agents",
-        "final_score": 0.313166,
+        "paper_id": "2402.13753",
+        "title": "LongRoPE: Extending LLM Context Window Beyond 2 Million Tokens",
+        "final_score": 0.208509,
         "query_paper_match": {
           "main_intent_satisfied": false,
           "matched_dimensions": [
-            "Topic match"
+            "场景匹配",
+            "约束匹配",
+            "论文类型匹配"
           ],
           "unmet_dimensions": [
-            "Survey preference match",
-            "Paper type match"
+            "时间偏好未充分满足",
+            "主意图未满足"
           ],
-          "match_score": 0.55,
-          "evidence_sufficiency": 0.72,
-          "brief_reason": "Addresses memory construction and retrieval for long-term conversational agents using segmentation and compression-based denoising, which is related to long-context conversational handling but is a single-method study rather than a survey."
+          "match_score": 0.641703,
+          "evidence_sufficiency": 0.633333,
+          "brief_reason": "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体仅部分匹配主意图。"
         },
         "ranking_reasons": [
-          "Addresses memory construction and retrieval for long-term conversational agents using segmentation and compression-based denoising, which is related to long-context conversational handling but is a single-method study rather than a survey.",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体仅部分匹配主意图。",
+          "命中维度：场景匹配",
+          "命中维度：约束匹配"
         ]
       }
     ]
   },
   {
-    "query": "benchmark for large language models on reasoning",
-    "follow_up_reply": null,
-    "top_k_results": [
-      {
-        "paper_id": "2502.06279",
-        "title": "DebateBench: A Challenging Long Context Reasoning Benchmark For Large Language Models",
-        "final_score": 0.921136,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Constraint match",
-            "Paper type match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.93,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Introduces DebateBench, an explicit long-context reasoning benchmark for LLMs focused on argumentation, deliberation, and verdict prediction. Directly aligns with the need for benchmarks assessing reasoning capabilities of LLMs."
-        },
-        "ranking_reasons": [
-          "Introduces DebateBench, an explicit long-context reasoning benchmark for LLMs focused on argumentation, deliberation, and verdict prediction. Directly aligns with the need for benchmarks assessing reasoning capabilities of LLMs.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
-        ]
-      },
-      {
-        "paper_id": "2502.01100",
-        "title": "ZebraLogic: On the Scaling Limits of LLMs for Logical Reasoning",
-        "final_score": 0.912677,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Constraint match",
-            "Paper type match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.92,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Introduces ZebraLogic, a structured evaluation framework/benchmark for logical reasoning in LLMs using controllable logic grid puzzles and scaling complexity. Very well aligned with logical/multi-step reasoning benchmarks for LLMs."
-        },
-        "ranking_reasons": [
-          "Introduces ZebraLogic, a structured evaluation framework/benchmark for logical reasoning in LLMs using controllable logic grid puzzles and scaling complexity. Very well aligned with logical/multi-step reasoning benchmarks for LLMs.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
-        ]
-      },
-      {
-        "paper_id": "2502.08680",
-        "title": "Mathematical Reasoning in Large Language Models:Assessing Logical and Arithmetic Errors across Wide Numerical Ranges",
-        "final_score": 0.88128,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Constraint match"
-          ],
-          "unmet_dimensions": [
-            "Paper type match"
-          ],
-          "match_score": 0.87,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Proposes GSM-Ranges, a generator and evaluation methodology to assess mathematical reasoning robustness and error types in LLMs, effectively functioning as a reasoning benchmark extension. Strongly matches reasoning evaluation focus, especially for math."
-        },
-        "ranking_reasons": [
-          "Proposes GSM-Ranges, a generator and evaluation methodology to assess mathematical reasoning robustness and error types in LLMs, effectively functioning as a reasoning benchmark extension. Strongly matches reasoning evaluation focus, especially for math.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Constraint match"
-        ]
-      }
-    ]
+    "query": "大语言模型推理论文（benchmark 优先）",
+    "follow_up_reply": "时间范围 2023-2026；任务聚焦推理评测；benchmark 优先但不限；方法、模型家族、作者、标题线索不限；指标可包含 Pass@1/GSM8K/MATH；偏好多样结果否；需要可解释理由否。",
+    "top_k_results": []
   },
   {
     "query": "multimodal reasoning papers",
     "follow_up_reply": "prefer diverse results",
     "top_k_results": [
       {
-        "paper_id": "2502.13383",
-        "title": "MM-Verify: Enhancing Multimodal Reasoning with Chain-of-Thought Verification",
-        "final_score": 0.902263,
+        "paper_id": "2502.11829",
+        "title": "Code-Vision: Evaluating Multimodal LLMs Logic Understanding and Code Generation Capabilities",
+        "final_score": 0.687185,
         "query_paper_match": {
           "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match",
-            "Scene match"
+            "场景匹配",
+            "主题匹配"
           ],
           "unmet_dimensions": [],
-          "match_score": 0.93,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Introduces MM-Verifier and MM-Reasoner specifically to enhance multimodal chain-of-thought reasoning in MLLMs using CoT verification and multimodal CoT data, directly aligning with multimodal reasoning over vision and language. Benchmarks on MathVista/MathVerse place it squarely in vision-language reasoning with explicit reasoning-method focus."
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.58,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "Introduces MM-Verifier and MM-Reasoner specifically to enhance multimodal chain-of-thought reasoning in MLLMs using CoT verification and multimodal CoT data, directly aligning with multimodal reasoning over vision and language. Benchmarks on MathVista/MathVerse place it squarely in vision-language reasoning with explicit reasoning-method focus.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Scene match"
+          "该论文命中维度：场景匹配；主题匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       },
       {
-        "paper_id": "2502.08859",
-        "title": "EnigmaEval:A Benchmark of Long Multimodal Reasoning Challenges",
-        "final_score": 0.880801,
+        "paper_id": "2501.08597",
+        "title": "Dynamic Knowledge Integration for Enhanced Vision-Language Reasoning",
+        "final_score": 0.685254,
         "query_paper_match": {
           "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match",
-            "Scene match"
+            "场景匹配",
+            "主题匹配"
           ],
           "unmet_dimensions": [],
-          "match_score": 0.92,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Proposes EnigmaEval, a benchmark of long, challenging multimodal puzzle-solving tasks explicitly framed as multimodal reasoning and deductive reasoning evaluation for frontier LMs. Highly aligned with the user’s interest in multimodal reasoning benchmarks and evaluation."
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.58,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "Proposes EnigmaEval, a benchmark of long, challenging multimodal puzzle-solving tasks explicitly framed as multimodal reasoning and deductive reasoning evaluation for frontier LMs. Highly aligned with the user’s interest in multimodal reasoning benchmarks and evaluation.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Scene match"
-        ]
-      },
-      {
-        "paper_id": "2502.01081",
-        "title": "The Jumping Reasoning Curve? Tracking the Evolution of Reasoning Performance in GPT-[n] and o-[n] Models on Multimodal Puzzles",
-        "final_score": 0.869428,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Topic match",
-            "Scene match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.9,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Directly evaluates and analyzes multimodal reasoning abilities of GPT-[n] and o-[n] models on challenging visual–language puzzles, with VQA-style and CoT setups. Strongly aligned with vision-language multimodal reasoning and its evaluation over puzzles."
-        },
-        "ranking_reasons": [
-          "Directly evaluates and analyzes multimodal reasoning abilities of GPT-[n] and o-[n] models on challenging visual–language puzzles, with VQA-style and CoT setups. Strongly aligned with vision-language multimodal reasoning and its evaluation over puzzles.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Scene match"
+          "该论文命中维度：场景匹配；主题匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       }
     ]
@@ -451,49 +212,70 @@
       {
         "paper_id": "2502.06872",
         "title": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
-        "final_score": 0.979629,
+        "final_score": 0.90428,
         "query_paper_match": {
           "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Paper type match",
-            "Survey preference match"
+            "场景匹配",
+            "主题匹配",
+            "约束匹配",
+            "论文类型匹配"
           ],
           "unmet_dimensions": [],
-          "match_score": 1.0,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "Exact title match and the abstract explicitly describe a comprehensive survey and roadmap on trustworthy RAG for LLMs, covering reliability, privacy, safety, fairness, explainability, and accountability."
+          "match_score": 0.92896,
+          "evidence_sufficiency": 0.87,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "Exact title match and the abstract explicitly describe a comprehensive survey and roadmap on trustworthy RAG for LLMs, covering reliability, privacy, safety, fairness, explainability, and accountability.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       },
       {
-        "paper_id": "2502.08826",
-        "title": "Ask in Any Modality:A Comprehensive Survey on Multimodal Retrieval-Augmented Generation",
-        "final_score": 0.550201,
+        "paper_id": "2501.09136",
+        "title": "Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG",
+        "final_score": 0.8662,
         "query_paper_match": {
-          "main_intent_satisfied": false,
+          "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match",
-            "Paper type match",
-            "Survey preference match"
+            "场景匹配",
+            "主题匹配",
+            "约束匹配",
+            "论文类型匹配"
           ],
-          "unmet_dimensions": [
-            "trustworthy RAG focus",
-            "LLM-centric scope"
-          ],
-          "match_score": 0.7,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "This is a survey on multimodal RAG, which overlaps with RAG and mentions hallucination and robustness but focuses on multimodal architectures rather than trustworthiness per se for LLM RAG."
+          "unmet_dimensions": [],
+          "match_score": 0.9,
+          "evidence_sufficiency": 0.86,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "This is a survey on multimodal RAG, which overlaps with RAG and mentions hallucination and robustness but focuses on multimodal architectures rather than trustworthiness per se for LLM RAG.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Paper type match"
+          "该论文命中维度：场景匹配；主题匹配；约束匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
+        ]
+      },
+      {
+        "paper_id": "2405.06211",
+        "title": "A Survey on RAG Meets LLMs: Towards Retrieval-Augmented Large Language Models",
+        "final_score": 0.852893,
+        "query_paper_match": {
+          "main_intent_satisfied": true,
+          "matched_dimensions": [
+            "场景匹配",
+            "约束匹配",
+            "论文类型匹配",
+            "综述偏好匹配"
+          ],
+          "unmet_dimensions": [],
+          "match_score": 0.9,
+          "evidence_sufficiency": 0.86,
+          "brief_reason": "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体满足主意图。"
+        },
+        "ranking_reasons": [
+          "该论文命中维度：场景匹配；约束匹配；论文类型匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：约束匹配"
         ]
       }
     ]
@@ -501,145 +283,71 @@
   {
     "query": "early exit for quality estimation",
     "follow_up_reply": null,
-    "top_k_results": [
-      {
-        "paper_id": "2502.14429",
-        "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-        "final_score": 0.90476,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Topic match",
-            "Constraint match"
-          ],
-          "unmet_dimensions": [],
-          "match_score": 0.98,
-          "evidence_sufficiency": 0.72,
-          "brief_reason": "Directly targets machine translation quality estimation and introduces Early-Exit COMET, computing quality scores and confidences at intermediate layers to enable early exit. This exactly aligns with using early-exit strategies to estimate output quality and decide when to stop computation."
-        },
-        "ranking_reasons": [
-          "Directly targets machine translation quality estimation and introduces Early-Exit COMET, computing quality scores and confidences at intermediate layers to enable early exit. This exactly aligns with using early-exit strategies to estimate output quality and decide when to stop computation.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Topic match"
-        ]
-      },
-      {
-        "paper_id": "2502.13329",
-        "title": "Language Models Can Predict Their Own Behavior",
-        "final_score": 0.692149,
-        "query_paper_match": {
-          "main_intent_satisfied": true,
-          "matched_dimensions": [
-            "Scene match",
-            "Constraint match"
-          ],
-          "unmet_dimensions": [
-            "Topic match"
-          ],
-          "match_score": 0.7,
-          "evidence_sufficiency": 0.5,
-          "brief_reason": "Introduces probes on internal LM states to build early warning/exit systems that predict eventual behavior, effectively estimating the outcome before full generation. While framed as behavior prediction rather than quality estimation, it closely matches early-exit based on confidence about the final output."
-        },
-        "ranking_reasons": [
-          "Introduces probes on internal LM states to build early warning/exit systems that predict eventual behavior, effectively estimating the outcome before full generation. While framed as behavior prediction rather than quality estimation, it closely matches early-exit based on confidence about the final output.",
-          "Matched dimension: Scene match",
-          "Matched dimension: Constraint match"
-        ]
-      },
-      {
-        "paper_id": "2502.11115",
-        "title": "Are Generative Models Underconfident? An Embarrassingly Simple Quality Estimation Approach",
-        "final_score": 0.502873,
-        "query_paper_match": {
-          "main_intent_satisfied": false,
-          "matched_dimensions": [
-            "Topic match"
-          ],
-          "unmet_dimensions": [
-            "Constraint match",
-            "method: early exit not used",
-            "Scene match",
-            "Paper type match"
-          ],
-          "match_score": 0.7,
-          "evidence_sufficiency": 0.85,
-          "brief_reason": "The paper directly studies reference-free quality estimation and confidence estimation for generative models but does not incorporate early-exit or adaptive computation mechanisms to stop inference based on these estimates."
-        },
-        "ranking_reasons": [
-          "The paper directly studies reference-free quality estimation and confidence estimation for generative models but does not incorporate early-exit or adaptive computation mechanisms to stop inference based on these estimates.",
-          "Matched dimension: Topic match"
-        ]
-      }
-    ]
+    "top_k_results": []
   },
   {
     "query": "translation quality estimation explainable reason",
     "follow_up_reply": null,
     "top_k_results": [
       {
-        "paper_id": "2502.14429",
-        "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-        "final_score": 0.360245,
+        "paper_id": "2403.14118",
+        "title": "From Handcrafted Features to LLMs: A Brief Survey for Machine Translation Quality Estimation",
+        "final_score": 0.70426,
         "query_paper_match": {
-          "main_intent_satisfied": false,
+          "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match",
-            "Scene match"
+            "场景匹配",
+            "主题匹配"
           ],
-          "unmet_dimensions": [
-            "explainable rationales for QE decisions"
-          ],
-          "match_score": 0.62,
-          "evidence_sufficiency": 0.55,
-          "brief_reason": "The paper is directly about translation quality estimation but focuses on efficiency and uncertainty/confidence estimation, not on providing human-understandable explanations or rationales for quality scores."
+          "unmet_dimensions": [],
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.605714,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "The paper is directly about translation quality estimation but focuses on efficiency and uncertainty/confidence estimation, not on providing human-understandable explanations or rationales for quality scores.",
-          "Matched dimension: Topic match",
-          "Matched dimension: Scene match"
+          "该论文命中维度：场景匹配；主题匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       },
       {
-        "paper_id": "2502.11115",
-        "title": "Are Generative Models Underconfident? An Embarrassingly Simple Quality Estimation Approach",
-        "final_score": 0.309469,
+        "paper_id": "2306.07486",
+        "title": "Knowledge-Prompted Estimator: A Novel Approach to Explainable Machine Translation Assessment",
+        "final_score": 0.692148,
         "query_paper_match": {
-          "main_intent_satisfied": false,
+          "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match"
+            "场景匹配",
+            "主题匹配"
           ],
-          "unmet_dimensions": [
-            "explainable rationales for QE decisions"
-          ],
-          "match_score": 0.55,
-          "evidence_sufficiency": 0.55,
-          "brief_reason": "The paper proposes a simple probability-based QE method applicable to translation and other tasks, but it optimizes correlation with quality labels rather than providing human-readable explanations or rationales."
+          "unmet_dimensions": [],
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.58,
+          "brief_reason": "该论文命中维度：场景匹配；主题匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "The paper proposes a simple probability-based QE method applicable to translation and other tasks, but it optimizes correlation with quality labels rather than providing human-readable explanations or rationales.",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；主题匹配；整体满足主意图。",
+          "命中维度：场景匹配",
+          "命中维度：主题匹配"
         ]
       },
       {
-        "paper_id": "2502.08561",
-        "title": "Quality-Aware Decoding: Unifying Quality Estimation and Decoding",
-        "final_score": 0.273289,
+        "paper_id": "2306.15399",
+        "title": "Quality Estimation of Machine Translated Texts based on Direct Evidence from Training Data",
+        "final_score": 0.68358,
         "query_paper_match": {
-          "main_intent_satisfied": false,
+          "main_intent_satisfied": true,
           "matched_dimensions": [
-            "Topic match"
+            "场景匹配"
           ],
-          "unmet_dimensions": [
-            "explainable rationales for QE decisions"
-          ],
-          "match_score": 0.58,
-          "evidence_sufficiency": 0.25,
-          "brief_reason": "It introduces token-level QE integrated into decoding for MT, which is relevant to QE but the provided snippets show no focus on interpretable explanations or explicit reasons for the scores."
+          "unmet_dimensions": [],
+          "match_score": 0.72,
+          "evidence_sufficiency": 0.58,
+          "brief_reason": "该论文命中维度：场景匹配；整体满足主意图。"
         },
         "ranking_reasons": [
-          "It introduces token-level QE integrated into decoding for MT, which is relevant to QE but the provided snippets show no focus on interpretable explanations or explicit reasons for the scores.",
-          "Matched dimension: Topic match"
+          "该论文命中维度：场景匹配；整体满足主意图。",
+          "命中维度：场景匹配"
         ]
       }
     ]

@@ -11,17 +11,19 @@ import html
 from typing import Any, Dict, Iterable, List
 
 import streamlit as st
+import streamlit.components.v1 as components
 
-from papercompass_core.config import APP_STATE_PATH, DATASET_LABEL, DATASET_RELATIVE_PATH, relative_to_project
+from papercompass_core.config import APP_STATE_PATH, get_active_dataset_info, relative_to_project
 from papercompass_core.llm import OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL, test_openai_api
 from papercompass_core.services import (
+    format_authors_for_display,
     get_default_db_path,
     get_saved_paper_ids,
     list_saved_papers,
     list_search_history,
     load_app_state,
+    load_demo_queries,
     load_project_stats,
-    load_standard_queries,
     project_database_exists,
     run_project_chain_session,
     save_paper,
@@ -147,8 +149,8 @@ PIPELINE_STAGE_SEQUENCE = [
 UI_TEXT = {
     "page_caption": {"zh": "{dataset} | 基于用户意图驱动的论文检索系统", "en": "{dataset} | Unified intent-driven paper retrieval system"},
     "workspace_settings": {"zh": "界面设置", "en": "View Settings"},
-    "sidebar_hint": {"zh": "侧边栏仅保留界面设置；系统状态、LLM 状态和示例已移到主页面。", "en": "The sidebar only keeps view settings. System status, LLM status, and demos now live on the main page."},
-    "sidebar_demo_hint": {"zh": "点击左侧示例可直接回填到输入框，不会自动检索。", "en": "Click a sidebar demo to refill the inputs without running the search automatically."},
+    "sidebar_hint": {"zh": "侧边栏仅保留界面设置；", "en": "The sidebar only keeps view settings. System status, LLM status, and demos now live on the main page."},
+    "sidebar_demo_hint": {"zh": "点击左侧示例可直接回填到输入框", "en": "Click a sidebar demo to refill the inputs without running the search automatically."},
     "quick_navigation": {"zh": "步骤定位", "en": "Step Navigation"},
     "quick_navigation_hint": {"zh": "搜索完成后，可从这里一键跳到对应区域。", "en": "After a search completes, jump directly to the relevant section from here."},
     "quick_navigation_empty": {"zh": "完成一次检索后，这里会显示完整步骤定位。", "en": "Run one search to see the full section navigation here."},
@@ -174,6 +176,18 @@ UI_TEXT = {
     "process_current_stage": {"zh": "当前阶段：{value}", "en": "Current stage: {value}"},
     "process_last_stage": {"zh": "最近完成：{value}", "en": "Most recent stage: {value}"},
     "process_stage_progress": {"zh": "阶段进度：{completed}/{total}", "en": "Stage progress: {completed}/{total}"},
+    "process_in_progress_kicker": {"zh": "处理中", "en": "Processing"},
+    "process_live_summary": {
+        "zh": "系统正在执行意图解析、候选召回、重排解释与结果整理，完成后会自动返回主工作台。",
+        "en": "The system is parsing intent, recalling candidates, reranking, and organizing results. It will return to the main workspace automatically when finished.",
+    },
+    "process_completed_stages": {"zh": "已完成阶段", "en": "Completed Stages"},
+    "process_remaining_stages": {"zh": "剩余阶段", "en": "Remaining Stages"},
+    "process_current_progress_label": {"zh": "当前进度", "en": "Current Progress"},
+    "process_live_tip": {
+        "zh": "详细阶段记录会在检索完成后显示在下方运行过程区域。",
+        "en": "Detailed stage logs will appear in the process panel below after the run finishes.",
+    },
     "process_running_hint": {"zh": "进行中阶段会持续高亮闪动。", "en": "The active stage stays prominently animated while running."},
     "process_completed_hint": {"zh": "链路已跑完，可展开下方明细回看完整阶段。", "en": "The run is complete. Expand the details below to review all stages."},
     "process_preparing": {"zh": "准备执行检索链路", "en": "Preparing pipeline"},
@@ -326,6 +340,27 @@ UI_TEXT = {
     "result_model_label": {"zh": "解释模型：{value}", "en": "Explanation model: {value}"},
 }
 
+UI_TEXT.update(
+    {
+        "result_quality_delta": {
+            "zh": "主意图满足 Top-K：{main_before} -> {main_after} | 平均匹配分：{match_before} -> {match_after} | 平均最终分：{final_before} -> {final_after}",
+            "en": "Main-intent satisfied in Top-K: {main_before} -> {main_after} | Avg match score: {match_before} -> {match_after} | Avg final score: {final_before} -> {final_after}",
+        },
+        "result_convergence_improved": {
+            "zh": "追问后结果更收敛：主意图满足 {main_before} -> {main_after}，平均匹配分 {match_before} -> {match_after}。",
+            "en": "Results converged better after the follow-up: main-intent satisfied {main_before} -> {main_after}, average match score {match_before} -> {match_after}.",
+        },
+        "result_convergence_stable": {
+            "zh": "追问后结果整体稳定：主意图满足 {main_before} -> {main_after}，平均匹配分 {match_before} -> {match_after}。",
+            "en": "Results stayed broadly stable after the follow-up: main-intent satisfied {main_before} -> {main_after}, average match score {match_before} -> {match_after}.",
+        },
+        "result_convergence_weakened": {
+            "zh": "追问后结果收敛减弱：主意图满足 {main_before} -> {main_after}，平均匹配分 {match_before} -> {match_after}。",
+            "en": "Results converged less after the follow-up: main-intent satisfied {main_before} -> {main_after}, average match score {match_before} -> {match_after}.",
+        },
+    }
+)
+
 STEP_SECTION_ANCHORS = {
     1: "step-1-search-input",
     2: "step-2-runtime-workbench",
@@ -335,6 +370,7 @@ STEP_SECTION_ANCHORS = {
     6: "step-6-paper-details",
     7: "step-7-management",
 }
+LIVE_PROCESS_SCROLL_ANCHOR = "live-process-top-animation"
 
 
 # 统一清理字符串，避免界面上出现多余空白或 `None`。
@@ -370,6 +406,467 @@ def inject_runtime_process_styles() -> None:
     st.markdown(
         """
 <style>
+:root {
+    --pc-bg: #f4f8ff;
+    --pc-surface: rgba(255, 255, 255, 0.94);
+    --pc-surface-soft: #f8fbff;
+    --pc-border: #c9d8f1;
+    --pc-border-strong: #9fb7dd;
+    --pc-text: #17304f;
+    --pc-muted: #5b6b80;
+    --pc-blue: #2f5fa7;
+    --pc-blue-soft: #eaf2ff;
+    --pc-orange: #d9984d;
+    --pc-orange-soft: #fff4e2;
+    --pc-green: #1f8a5b;
+    --pc-green-soft: #e9f8ef;
+    --pc-shadow: 0 16px 42px rgba(25, 58, 112, 0.10);
+}
+
+.stApp {
+    color: var(--pc-text);
+    background:
+        radial-gradient(circle at top left, rgba(47, 95, 167, 0.10), transparent 24%),
+        radial-gradient(circle at top right, rgba(217, 152, 77, 0.12), transparent 20%),
+        linear-gradient(180deg, #f7faff 0%, #f1f6ff 100%);
+}
+
+.stApp,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stText"],
+.stApp label,
+.stApp p,
+.stApp input,
+.stApp textarea,
+.stApp button,
+.stApp li,
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6 {
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+.stApp .material-symbols-rounded,
+.stApp .material-symbols-outlined,
+.stApp .material-icons,
+.stApp [data-testid="stExpander"] summary span[aria-hidden="true"] {
+    font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons" !important;
+}
+
+.block-container {
+    max-width: 1450px;
+    padding-top: 1.3rem;
+    padding-bottom: 4rem;
+}
+
+section[data-testid="stSidebar"] {
+    background:
+        radial-gradient(circle at top, rgba(47, 95, 167, 0.14), transparent 22%),
+        linear-gradient(180deg, #f7faff 0%, #eef4ff 100%);
+    border-right: 1px solid rgba(201, 216, 241, 0.72);
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 24px;
+    border: 1px solid rgba(201, 216, 241, 0.90);
+    background: var(--pc-surface);
+    box-shadow: var(--pc-shadow);
+    padding: 0.25rem 0.35rem;
+}
+
+div[data-testid="stMetric"] {
+    border-radius: 20px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    padding: 0.5rem 0.2rem;
+}
+
+div[data-testid="stMetricLabel"] p {
+    color: var(--pc-muted);
+    font-weight: 700;
+}
+
+div[data-testid="stMetricValue"] {
+    color: var(--pc-text);
+}
+
+div[data-baseweb="textarea"] textarea,
+div[data-baseweb="input"] input {
+    border-radius: 18px !important;
+    border: 1px solid rgba(201, 216, 241, 0.95) !important;
+    background: #f9fbff !important;
+    color: var(--pc-text) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    padding-right: 3.2rem !important;
+    line-height: 1.6 !important;
+    min-height: 2.9rem;
+}
+
+div[data-baseweb="textarea"] textarea:focus,
+div[data-baseweb="input"] input:focus {
+    border-color: rgba(47, 95, 167, 0.70) !important;
+    box-shadow: 0 0 0 1px rgba(47, 95, 167, 0.18) !important;
+}
+
+div[data-baseweb="select"] > div,
+div[data-baseweb="popover"] input {
+    border-radius: 16px !important;
+    border-color: rgba(201, 216, 241, 0.95) !important;
+    background: #f9fbff !important;
+}
+
+div[data-testid="stTextArea"] label p,
+div[data-testid="stNumberInput"] label p,
+div[data-testid="stSelectbox"] label p {
+    font-weight: 700;
+    color: var(--pc-text);
+}
+
+div[data-testid="stTextArea"] textarea {
+    padding-top: 0.9rem !important;
+    padding-bottom: 0.9rem !important;
+}
+
+[data-testid="InputInstructions"] {
+    display: none !important;
+}
+
+.stButton > button {
+    border-radius: 16px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: linear-gradient(180deg, #ffffff 0%, #edf4ff 100%);
+    color: var(--pc-text);
+    min-height: 44px;
+    font-weight: 700;
+    box-shadow: 0 10px 24px rgba(47, 95, 167, 0.08);
+}
+
+.stButton > button:hover {
+    border-color: rgba(47, 95, 167, 0.72);
+    color: var(--pc-blue);
+}
+
+.stButton > button[kind="primary"] {
+    background: linear-gradient(180deg, #3a6dbc 0%, #2f5fa7 100%);
+    color: white;
+    border-color: rgba(47, 95, 167, 0.95);
+}
+
+div[data-testid="stTabs"] button[role="tab"] {
+    border-radius: 14px;
+    border: 1px solid transparent;
+    padding: 0.48rem 0.95rem;
+    font-weight: 700;
+    color: var(--pc-muted);
+}
+
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    background: var(--pc-blue-soft);
+    color: var(--pc-blue);
+    border-color: rgba(201, 216, 241, 0.95);
+}
+
+details[data-testid="stExpander"] {
+    border-radius: 20px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: rgba(255, 255, 255, 0.82);
+    overflow: hidden;
+}
+
+details[data-testid="stExpander"] summary {
+    background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(239, 245, 255, 0.98));
+}
+
+.pc-hero {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: space-between;
+    gap: 22px;
+    align-items: flex-start;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    border-radius: 28px;
+    padding: 24px 26px 22px;
+    margin-bottom: 1.1rem;
+    background:
+        radial-gradient(circle at top right, rgba(217, 152, 77, 0.18), transparent 26%),
+        radial-gradient(circle at left center, rgba(47, 95, 167, 0.14), transparent 22%),
+        linear-gradient(135deg, rgba(255,255,255,0.98), rgba(244, 248, 255, 0.98));
+    box-shadow: 0 22px 48px rgba(25, 58, 112, 0.11);
+}
+
+.pc-hero-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.pc-hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: var(--pc-orange-soft);
+    color: #8b5a19;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.pc-hero-title {
+    margin: 14px 0 8px;
+    font-size: 2rem;
+    line-height: 1.16;
+    color: var(--pc-text);
+    font-weight: 900;
+}
+
+.pc-hero-subtitle {
+    max-width: 860px;
+    font-size: 1rem;
+    line-height: 1.72;
+    color: var(--pc-muted);
+}
+
+.pc-hero-meta {
+    width: min(360px, 34%);
+    min-width: 260px;
+    display: grid;
+    gap: 10px;
+}
+
+.pc-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0.35rem 0 0.45rem;
+}
+
+.pc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: 1px solid rgba(201, 216, 241, 0.9);
+    background: var(--pc-blue-soft);
+    color: var(--pc-blue);
+}
+
+.pc-chip.soft {
+    background: #f7faff;
+    color: var(--pc-text);
+}
+
+.pc-chip.good {
+    background: var(--pc-green-soft);
+    color: var(--pc-green);
+    border-color: rgba(129, 206, 166, 0.95);
+}
+
+.pc-panel-lead {
+    margin-bottom: 0.9rem;
+}
+
+.pc-panel-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 5px 11px;
+    background: var(--pc-blue-soft);
+    color: var(--pc-blue);
+    font-size: 0.76rem;
+    font-weight: 800;
+    margin-bottom: 0.55rem;
+}
+
+.pc-panel-title {
+    font-size: 1.26rem;
+    line-height: 1.3;
+    font-weight: 800;
+    color: var(--pc-text);
+    margin-bottom: 0.28rem;
+}
+
+.pc-panel-caption {
+    color: var(--pc-muted);
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+.pc-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin: 0.4rem 0 0.6rem;
+}
+
+.pc-kpi-card {
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.96);
+    background: linear-gradient(180deg, #fbfdff 0%, #f3f8ff 100%);
+    padding: 14px 16px;
+}
+
+.pc-kpi-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--pc-muted);
+    margin-bottom: 6px;
+}
+
+.pc-kpi-value {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: var(--pc-text);
+}
+
+.pc-kv-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 0.45rem;
+}
+
+.pc-kv-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: #f8fbff;
+    border: 1px solid rgba(201, 216, 241, 0.88);
+    min-width: 0;
+}
+
+.pc-kv-key {
+    color: var(--pc-muted);
+    font-size: 0.86rem;
+    font-weight: 700;
+    flex: 0 0 100%;
+}
+
+.pc-kv-value {
+    color: var(--pc-text);
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pc-list-title {
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: var(--pc-text);
+    margin: 0.25rem 0 0.4rem;
+}
+
+.pc-list-block {
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.88);
+    background: #f8fbff;
+    padding: 10px 14px 8px;
+    margin-bottom: 0.7rem;
+}
+
+.pc-list-block ul {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+.pc-list-block li {
+    color: var(--pc-text);
+    margin: 0.22rem 0;
+    line-height: 1.65;
+}
+
+.pc-empty-note {
+    border-radius: 16px;
+    background: #f8fbff;
+    border: 1px dashed rgba(201, 216, 241, 0.95);
+    color: var(--pc-muted);
+    padding: 10px 12px;
+    margin-bottom: 0.7rem;
+}
+
+.pc-section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin: 1.2rem 0 0.75rem;
+}
+
+.pc-section-step {
+    flex: 0 0 auto;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #2f5fa7 0%, #3b73c4 100%);
+    color: white;
+    font-weight: 900;
+    font-size: 0.95rem;
+    padding: 8px 12px;
+    min-width: 46px;
+    text-align: center;
+    box-shadow: 0 10px 24px rgba(47, 95, 167, 0.18);
+}
+
+.pc-section-title {
+    font-size: 1.28rem;
+    font-weight: 900;
+    color: var(--pc-text);
+    line-height: 1.3;
+}
+
+.pc-section-caption {
+    font-size: 0.92rem;
+    color: var(--pc-muted);
+    line-height: 1.6;
+    margin-top: 4px;
+}
+
+.pc-note {
+    color: var(--pc-muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+}
+
+.pc-result-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.35rem;
+    color: var(--pc-blue);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.pc-inline-meta {
+    color: var(--pc-muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    margin: 0.15rem 0 0.55rem;
+}
+
+@media (max-width: 960px) {
+    .pc-hero {
+        flex-direction: column;
+    }
+    .pc-hero-meta {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
 .pc-process-shell {
     border: 1px solid rgba(38, 70, 83, 0.18);
     border-radius: 20px;
@@ -382,26 +879,45 @@ def inject_runtime_process_styles() -> None:
 }
 .pc-process-shell.is-live {
     border-color: rgba(42, 157, 143, 0.35);
-    box-shadow: 0 22px 44px rgba(42, 157, 143, 0.18);
+    box-shadow: 0 28px 70px rgba(42, 157, 143, 0.22);
+}
+.pc-process-live-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483000 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 24px !important;
+    pointer-events: auto !important;
+}
+.pc-process-live-backdrop {
+    position: absolute !important;
+    inset: 0 !important;
+    background:
+        radial-gradient(circle at center, rgba(47, 95, 167, 0.18), transparent 32%),
+        radial-gradient(circle at top right, rgba(217, 152, 77, 0.16), transparent 22%),
+        rgba(17, 31, 51, 0.30);
+    backdrop-filter: blur(14px) saturate(116%);
+    animation: pc-live-backdrop-in 0.22s ease-out;
 }
 .pc-process-live-dock {
-    position: fixed;
-    left: 50%;
-    top: 58%;
-    transform: translate(-50%, -50%);
-    width: min(820px, 74vw);
-    z-index: 999999;
-    pointer-events: none;
+    position: relative !important;
+    width: min(520px, 84vw) !important;
+    max-height: min(82vh, 520px) !important;
+    z-index: 1 !important;
+    pointer-events: auto !important;
+    animation: pc-live-dock-enter 0.24s ease-out, pc-live-dock-float 2.1s ease-in-out 0.24s infinite;
 }
 .pc-process-live-dock::before {
     content: "";
     position: absolute;
-    inset: -24px -30px -28px;
-    border-radius: 30px;
+    inset: -30px -34px -34px;
+    border-radius: 36px;
     background:
-        radial-gradient(circle at center, rgba(42, 157, 143, 0.22), transparent 56%),
-        radial-gradient(circle at top right, rgba(244, 162, 97, 0.20), transparent 42%);
-    filter: blur(14px);
+        radial-gradient(circle at center, rgba(42, 157, 143, 0.28), transparent 54%),
+        radial-gradient(circle at top right, rgba(244, 162, 97, 0.26), transparent 40%);
+    filter: blur(22px);
     z-index: 0;
 }
 .pc-process-live-dock .pc-process-shell {
@@ -411,30 +927,109 @@ def inject_runtime_process_styles() -> None:
     border-color: rgba(42, 157, 143, 0.30);
     background:
         radial-gradient(circle at top right, rgba(233, 196, 106, 0.20), transparent 34%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(246, 248, 249, 0.92));
-    backdrop-filter: blur(16px);
-    box-shadow: 0 30px 78px rgba(19, 42, 51, 0.22);
+        linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(246, 248, 249, 0.95));
+    backdrop-filter: blur(18px);
+    box-shadow: 0 34px 88px rgba(19, 42, 51, 0.24);
+    padding: 24px 24px 20px;
+}
+.pc-process-live-compact {
+    display: grid;
+    gap: 16px;
+}
+.pc-process-live-compact-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.pc-process-live-compact-copy {
+    min-width: 0;
+    flex: 1;
+}
+.pc-process-live-compact-kicker {
+    color: #2a9d8f;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+}
+.pc-process-live-compact-title {
+    color: #17304f;
+    font-size: 1.2rem;
+    line-height: 1.35;
+    font-weight: 900;
+    margin-bottom: 5px;
+}
+.pc-process-live-compact-text {
+    color: #415a63;
+    font-size: 0.9rem;
+    line-height: 1.65;
 }
 .pc-process-live-dock .pc-process-title {
-    font-size: 1.08rem;
+    font-size: 1.12rem;
 }
 .pc-process-live-dock .pc-process-chip {
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.82);
 }
-.pc-process-live-dock .pc-stage-list {
-    max-height: min(38vh, 360px);
-    overflow: auto;
-    padding-right: 4px;
+.pc-process-live-statgrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
 }
-.pc-process-live-dock .pc-stage-card.is-running {
-    transform: scale(1.01);
+.pc-process-live-stat {
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.88);
+    background: rgba(255,255,255,0.82);
+    padding: 12px 12px 10px;
 }
-.pc-process-live-dock .pc-stage-list::-webkit-scrollbar {
-    width: 8px;
+.pc-process-live-stat-label {
+    color: #5b6b80;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 6px;
 }
-.pc-process-live-dock .pc-stage-list::-webkit-scrollbar-thumb {
-    background: rgba(38, 70, 83, 0.18);
-    border-radius: 999px;
+.pc-process-live-stat-value {
+    color: #17304f;
+    font-size: 1.34rem;
+    font-weight: 900;
+    line-height: 1;
+}
+.pc-process-live-tip {
+    border-radius: 18px;
+    border: 1px dashed rgba(159, 183, 221, 0.95);
+    background: rgba(248, 251, 255, 0.94);
+    color: #415a63;
+    font-size: 0.84rem;
+    line-height: 1.62;
+    padding: 12px 13px;
+}
+.pc-process-live-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2px;
+}
+.pc-process-live-orb {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #2a9d8f 0%, #1f8a7c 100%);
+    box-shadow: 0 0 0 0 rgba(42, 157, 143, 0.36);
+    animation: pc-live-orb-pulse 1.35s ease-in-out infinite;
+    flex: 0 0 auto;
+}
+.pc-process-live-orb::before,
+.pc-process-live-orb::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(42, 157, 143, 0.24);
+    animation: pc-live-orb-ring 1.6s ease-out infinite;
+}
+.pc-process-live-orb::after {
+    animation-delay: 0.55s;
 }
 .pc-process-banner {
     display: flex;
@@ -481,7 +1076,7 @@ def inject_runtime_process_styles() -> None:
 }
 .pc-process-progress-track {
     width: 100%;
-    height: 11px;
+    height: 12px;
     border-radius: 999px;
     background: rgba(19, 42, 51, 0.08);
     overflow: hidden;
@@ -512,6 +1107,7 @@ def inject_runtime_process_styles() -> None:
     border: 1px solid rgba(38, 70, 83, 0.12);
     background: rgba(255, 255, 255, 0.76);
     overflow: hidden;
+    margin-left: 8px;
 }
 .pc-stage-card::before {
     content: "";
@@ -526,6 +1122,19 @@ def inject_runtime_process_styles() -> None:
     gap: 12px;
     align-items: center;
     margin-bottom: 6px;
+    position: relative;
+    padding-left: 4px;
+}
+.pc-stage-card-top::before {
+    content: "";
+    position: absolute;
+    left: -19px;
+    top: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #d3dfef;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.94);
 }
 .pc-stage-status {
     display: inline-flex;
@@ -564,6 +1173,9 @@ def inject_runtime_process_styles() -> None:
 .pc-stage-card.is-completed::before {
     background: linear-gradient(180deg, #2a9d8f 0%, #8bd3c7 100%);
 }
+.pc-stage-card.is-completed .pc-stage-card-top::before {
+    background: #2a9d8f;
+}
 .pc-stage-card.is-completed .pc-stage-status-dot {
     background: #2a9d8f;
 }
@@ -577,6 +1189,9 @@ def inject_runtime_process_styles() -> None:
 .pc-stage-card.is-running::before {
     background: linear-gradient(180deg, #f4a261 0%, #e76f51 100%);
 }
+.pc-stage-card.is-running .pc-stage-card-top::before {
+    background: #f4a261;
+}
 .pc-stage-card.is-running::after {
     content: "";
     position: absolute;
@@ -584,10 +1199,35 @@ def inject_runtime_process_styles() -> None:
     background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.78) 40%, transparent 75%);
     animation: pc-stage-shine 1.6s linear infinite;
 }
+.pc-stage-card.is-running .pc-stage-order {
+    color: rgba(231, 111, 81, 0.78);
+}
 .pc-stage-card.is-running .pc-stage-status-dot {
     background: #f4a261;
     box-shadow: 0 0 0 0 rgba(244, 162, 97, 0.45);
     animation: pc-dot-pulse 1.25s ease-in-out infinite;
+}
+@keyframes pc-live-backdrop-in {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+@keyframes pc-live-dock-enter {
+    0% { opacity: 0; transform: translateY(12px) scale(0.985); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pc-live-dock-float {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+    100% { transform: translateY(0); }
+}
+@keyframes pc-live-orb-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(42, 157, 143, 0.34); }
+    70% { box-shadow: 0 0 0 14px rgba(42, 157, 143, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(42, 157, 143, 0); }
+}
+@keyframes pc-live-orb-ring {
+    0% { transform: scale(0.9); opacity: 0.65; }
+    100% { transform: scale(1.35); opacity: 0; }
 }
 @keyframes pc-process-sweep {
     0% { transform: translateX(-120%); }
@@ -608,15 +1248,19 @@ def inject_runtime_process_styles() -> None:
     100% { box-shadow: 0 0 0 0 rgba(244, 162, 97, 0); }
 }
 @media (max-width: 960px) {
+    .pc-process-live-overlay {
+        padding: 14px;
+    }
     .pc-process-live-dock {
-        width: 92vw;
-        top: 62%;
+        width: 94vw;
+        max-height: 72vh;
+        animation: pc-live-dock-enter 0.24s ease-out;
     }
     .pc-process-live-dock .pc-process-shell {
-        padding: 14px 14px 12px;
+        padding: 16px 16px 14px;
     }
-    .pc-process-live-dock .pc-stage-list {
-        max-height: min(34vh, 300px);
+    .pc-process-live-statgrid {
+        grid-template-columns: 1fr;
     }
 }
 </style>
@@ -694,12 +1338,12 @@ def render_string_list(title: str, items: Iterable[str], empty_text: str = "-", 
         if not text:
             continue
         normalized.append(formatter(text) if formatter else text)
-    st.markdown(f"**{title}**")
+    st.markdown(f"<div class='pc-list-title'>{html.escape(title)}</div>", unsafe_allow_html=True)
     if not normalized:
-        st.caption(empty_text)
+        st.markdown(f"<div class='pc-empty-note'>{html.escape(empty_text)}</div>", unsafe_allow_html=True)
         return
-    for item in normalized:
-        st.write(f"- {item}")
+    items_markup = "".join(f"<li>{html.escape(clean_text(item))}</li>" for item in normalized if clean_text(item))
+    st.markdown(f"<div class='pc-list-block'><ul>{items_markup}</ul></div>", unsafe_allow_html=True)
 
 
 def queue_query_state(
@@ -733,6 +1377,12 @@ def apply_pending_query_state() -> bool:
             st.session_state[widget_key] = st.session_state.pop(pending_key)
             applied = True
     return applied
+
+
+def queue_run_request(*, query_override: str = "", follow_up_override: str = "") -> None:
+    st.session_state["_pending_run_query"] = True
+    st.session_state["_pending_run_query_override"] = clean_text(query_override)
+    st.session_state["_pending_run_follow_up_override"] = clean_text(follow_up_override)
 
 
 def build_follow_up_draft(frame: Dict[str, Any], gap_report: Dict[str, Any]) -> str:
@@ -896,31 +1546,90 @@ def build_stage_events_markup(events: Iterable[Dict[str, Any]], *, live: bool = 
     is_live_running = bool(live and running_event)
     shell_class = "pc-process-shell is-live" if is_live_running else "pc-process-shell"
     progress_width = f"{max(min(progress_ratio * 100, 100.0), 6.0):.1f}%"
+    completed_count = sum(1 for event in normalized if clean_text(event.get("status")) == "completed")
+    active_count = 1 if running_event else 0
+    remaining_count = max(total_steps - completed_count - active_count, 0)
+    live_body_markup = "".join(
+        [
+            "<div class='pc-process-live-compact'>",
+            "<div class='pc-process-live-compact-head'>",
+            "<div class='pc-process-live-orb'></div>",
+            "<div class='pc-process-live-compact-copy'>",
+            f"<div class='pc-process-live-compact-kicker'>{html.escape(t('process_in_progress_kicker'))}</div>",
+            f"<div class='pc-process-live-compact-title'>{html.escape(current_stage_label or title)}</div>",
+            f"<div class='pc-process-live-compact-text'>{html.escape(t('process_live_summary'))}</div>",
+            "</div>",
+            "</div>",
+            "<div class='pc-process-live-statgrid'>",
+            (
+                "<div class='pc-process-live-stat'>"
+                f"<div class='pc-process-live-stat-label'>{html.escape(t('process_completed_stages'))}</div>"
+                f"<div class='pc-process-live-stat-value'>{completed_count}</div>"
+                "</div>"
+            ),
+            (
+                "<div class='pc-process-live-stat'>"
+                f"<div class='pc-process-live-stat-label'>{html.escape(t('process_current_progress_label'))}</div>"
+                f"<div class='pc-process-live-stat-value'>{current_stage_step}/{total_steps}</div>"
+                "</div>"
+            ),
+            (
+                "<div class='pc-process-live-stat'>"
+                f"<div class='pc-process-live-stat-label'>{html.escape(t('process_remaining_stages'))}</div>"
+                f"<div class='pc-process-live-stat-value'>{remaining_count}</div>"
+                "</div>"
+            ),
+            "</div>",
+            f"<div class='pc-process-live-tip'>{html.escape(t('process_live_tip'))}</div>",
+            "</div>",
+        ]
+    ) if is_live_running else f"<div class='pc-stage-list'>{''.join(cards)}</div>"
+    process_meta_markup = (
+        ""
+        if is_live_running
+        else "".join(
+            [
+                "<div class='pc-process-meta'>",
+                f"<div class='pc-process-chip'>{html.escape(t('process_stage_progress', completed=current_stage_step, total=total_steps))}</div>",
+                f"<div class='pc-process-chip'>{html.escape(hint)}</div>",
+                "</div>",
+            ]
+        )
+    )
     shell_markup = "".join(
         [
             f"<div class='{shell_class}'>",
             "<div class='pc-process-banner'>",
             "<div class='pc-process-banner-copy'>",
             f"<div class='pc-process-kicker'>{html.escape(t('run_process'))}</div>",
-            f"<div class='pc-process-title'>{html.escape(title)}</div>",
+            (
+                "<div class='pc-process-live-header'>"
+                "<div class='pc-process-live-orb'></div>"
+                f"<div class='pc-process-title'>{html.escape(title)}</div>"
+                "</div>"
+                if is_live_running
+                else f"<div class='pc-process-title'>{html.escape(title)}</div>"
+            ),
             f"<div class='pc-process-subtitle'>{html.escape(subtitle)}</div>",
             "</div>",
-            "<div class='pc-process-meta'>",
-            f"<div class='pc-process-chip'>{html.escape(t('process_stage_progress', completed=current_stage_step, total=total_steps))}</div>",
-            f"<div class='pc-process-chip'>{html.escape(hint)}</div>",
-            "</div>",
+            process_meta_markup,
             "</div>",
             "<div class='pc-process-progress-track'>",
             f"<div class='pc-process-progress-fill' style='width:{progress_width};'></div>",
             "</div>",
-            "<div class='pc-stage-list'>",
-            "".join(cards),
-            "</div>",
+            live_body_markup,
             "</div>",
         ]
     )
     if is_live_running:
-        return f"<div class='pc-process-live-dock'>{shell_markup}</div>"
+        return "".join(
+            [
+                "<div class='pc-process-live-overlay'>",
+                "<div class='pc-process-live-backdrop'></div>",
+                f"<div class='pc-process-live-dock'>{shell_markup}</div>",
+                "</div>",
+            ]
+        )
     return shell_markup
 
 
@@ -1010,9 +1719,61 @@ def render_runtime_summary(payload: Dict[str, Any]) -> None:
 def render_section_header(step_number: int, title: str, caption: str = "", anchor_id: str = "") -> None:
     if anchor_id:
         st.markdown(f"<div id='{anchor_id}'></div>", unsafe_allow_html=True)
-    st.markdown(f"### {title}")
+    markup = [
+        "<div class='pc-section-heading'>",
+        f"<div class='pc-section-step'>{step_number:02d}</div>",
+        "<div>",
+        f"<div class='pc-section-title'>{html.escape(title)}</div>",
+    ]
     if caption:
-        st.caption(caption)
+        markup.append(f"<div class='pc-section-caption'>{html.escape(caption)}</div>")
+    markup.extend(["</div>", "</div>"])
+    st.markdown("".join(markup), unsafe_allow_html=True)
+
+
+def render_anchor_autoscroll(anchor_id: str, *, behavior: str = "smooth", block: str = "start") -> None:
+    target_id = clean_text(anchor_id)
+    if not target_id:
+        return
+    components.html(
+        f"""
+<div style="height:0; overflow:hidden;"></div>
+<script>
+(function() {{
+    const targetId = {target_id!r};
+    const behavior = {behavior!r};
+    const block = {block!r};
+    const maxAttempts = 72;
+    let attempts = 0;
+
+    function scrollToAnchor() {{
+        const parentWindow = window.parent;
+        const parentDoc = parentWindow && parentWindow.document;
+        if (!parentDoc) return false;
+        const anchor = parentDoc.getElementById(targetId);
+        if (!anchor) return false;
+        anchor.scrollIntoView({{ behavior, block }});
+        try {{
+            parentWindow.location.hash = "#" + targetId;
+        }} catch (error) {{
+        }}
+        return true;
+    }}
+
+    if (scrollToAnchor()) return;
+
+    const timer = window.setInterval(function() {{
+        attempts += 1;
+        if (scrollToAnchor() || attempts >= maxAttempts) {{
+            window.clearInterval(timer);
+        }}
+    }}, 120);
+}})();
+</script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 # 将标准示例查询写回界面状态；可选择仅回填，或回填后自动运行。
@@ -1060,7 +1821,7 @@ def render_step_navigation(has_payload: bool) -> None:
 
 
 # 侧边栏保留界面设置、步骤定位和轻量示例快捷入口，避免打断主页面主线。
-def render_sidebar(standard_queries: List[Dict[str, Any]], has_payload: bool) -> bool:
+def render_sidebar(demo_queries: List[Dict[str, Any]], has_payload: bool) -> bool:
     with st.sidebar:
         current_value = st.session_state.get("ui_language", "zh")
         language_codes = list(LANGUAGE_OPTIONS.keys())
@@ -1077,16 +1838,167 @@ def render_sidebar(standard_queries: List[Dict[str, Any]], has_payload: bool) ->
         render_step_navigation(has_payload)
         st.subheader(t("demo_replay"))
         st.caption(t("sidebar_demo_hint"))
-        for index, item in enumerate(standard_queries[:6], start=1):
+        for index, item in enumerate(demo_queries, start=1):
             if st.button(t("demo_button", index=index), key=f"sidebar_demo_{index}", use_container_width=True):
                 apply_demo_query(item, auto_run=False)
                 st.rerun()
         return st.checkbox(t("show_raw_json"), value=False)
 
 
+def render_panel_lead(title: str, caption: str = "", kicker: str = "") -> None:
+    markup = ["<div class='pc-panel-lead'>"]
+    if kicker:
+        markup.append(f"<div class='pc-panel-kicker'>{html.escape(kicker)}</div>")
+    markup.append(f"<div class='pc-panel-title'>{html.escape(title)}</div>")
+    if caption:
+        markup.append(f"<div class='pc-panel-caption'>{html.escape(caption)}</div>")
+    markup.append("</div>")
+    st.markdown("".join(markup), unsafe_allow_html=True)
+
+
+def render_chip_row(items: Iterable[str], *, tone: str = "soft") -> None:
+    chips = [clean_text(item) for item in items if clean_text(item)]
+    if not chips:
+        return
+    markup = "".join(
+        f"<span class='pc-chip {html.escape(tone)}'>{html.escape(text)}</span>"
+        for text in chips
+    )
+    st.markdown(f"<div class='pc-chip-row'>{markup}</div>", unsafe_allow_html=True)
+
+
+def render_metric_grid(metrics: List[tuple[str, Any]]) -> None:
+    cards = "".join(
+        [
+            "<div class='pc-kpi-card'>"
+            f"<div class='pc-kpi-label'>{html.escape(clean_text(label))}</div>"
+            f"<div class='pc-kpi-value'>{html.escape(clean_text(value))}</div>"
+            "</div>"
+            for label, value in metrics
+        ]
+    )
+    st.markdown(f"<div class='pc-kpi-grid'>{cards}</div>", unsafe_allow_html=True)
+
+
+def render_key_value_list(items: List[tuple[str, Any]]) -> None:
+    rows = "".join(
+        [
+            "<div class='pc-kv-item'>"
+            f"<div class='pc-kv-key'>{html.escape(clean_text(key))}</div>"
+            f"<div class='pc-kv-value'>{html.escape(clean_text(value))}</div>"
+            "</div>"
+            for key, value in items
+        ]
+    )
+    st.markdown(f"<div class='pc-kv-list'>{rows}</div>", unsafe_allow_html=True)
+
+
+def render_hero_banner(stats: Dict[str, int]) -> None:
+    dataset_info = get_active_dataset_info()
+    hero = "".join(
+        [
+            "<div class='pc-hero'>",
+            "<div class='pc-hero-copy'>",
+            "<div class='pc-hero-kicker'>基于用户意图理解的学术论文检索与管理系统</div>",
+            "<div class='pc-hero-title'>PaperCompass 检索工作台</div>",
+            "<div class='pc-hero-subtitle'>",
+            #"界面层改成更贴近论文插图和正式系统演示的样式，但检索主链路、意图解析、重排解释、收藏与历史逻辑保持不变。",
+            "</div>",
+            "</div>",
+            "<div class='pc-hero-meta'>",
+            f"<div class='pc-chip soft'>{html.escape(str(dataset_info.get('label', 'Dataset')))}</div>",
+            f"<div class='pc-chip soft'>数据库：{html.escape(relative_to_project(get_default_db_path()))}</div>",
+            f"<div class='pc-chip good'>论文 {stats.get('papers', 0)} 篇</div>",
+            f"<div class='pc-chip soft'>语义卡 {stats.get('semantic_cards', 0)} 张</div>",
+            f"<div class='pc-chip soft'>历史记录 {stats.get('intent_histories', 0)} 条</div>",
+            "</div>",
+            "</div>",
+        ]
+    )
+    st.markdown(hero, unsafe_allow_html=True)
+
+
+def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, Any]]) -> None:
+    left_col, right_col = st.columns([0.92, 2.48], gap="large")
+    with left_col:
+        with st.container(border=True):
+            render_panel_lead("界面设置 / 系统状态", "这里集中展示运行库、模型状态和当前检索模式。", "状态总览")
+            render_key_value_list(
+                [
+                    ("当前数据库", relative_to_project(get_default_db_path())),
+                    ("论文数", stats.get("papers", 0)),
+                    ("章节数", stats.get("sections", 0)),
+                    ("FTS 行数", stats.get("fts_rows", 0)),
+                    ("语义卡", stats.get("semantic_cards", 0)),
+                    ("检索历史", stats.get("intent_histories", 0)),
+                    ("收藏论文", stats.get("saved_papers", 0)),
+                    ("LLM 状态", t("api_key_configured") if OPENAI_API_KEY else t("api_key_unconfigured")),
+                ]
+            )
+            render_chip_row(
+                [
+                    "主链路检索",
+                    f"Top-K = {int(st.session_state.get('top_k_input', 5))}",
+                    f"候选池 = {int(st.session_state.get('candidate_pool_input', 40))}",
+                ]
+            )
+
+    with right_col:
+        with st.container(border=True):
+            render_panel_lead(t("search_input"), t("search_input_caption"), "自然语言入口")
+            st.text_area(
+                t("natural_language_query"),
+                key="query_input",
+                height=110,
+                placeholder=t("query_placeholder"),
+            )
+            st.text_area(
+                t("optional_follow_up"),
+                key="follow_up_input",
+                height=80,
+                placeholder=t("follow_up_placeholder"),
+            )
+            config_col1, config_col2, config_col3, config_col4 = st.columns([1, 1, 1, 1.1], gap="medium")
+            with config_col1:
+                st.number_input("Top-K", min_value=3, max_value=10, value=5, step=1, key="top_k_input")
+            with config_col2:
+                st.number_input(
+                    t("candidate_pool_size"),
+                    min_value=20,
+                    max_value=120,
+                    value=40,
+                    step=10,
+                    key="candidate_pool_input",
+                )
+            with config_col3:
+                st.number_input(t("explain_limit"), min_value=3, max_value=10, value=5, step=1, key="explain_limit_input")
+            with config_col4:
+                st.write("")
+                if st.button(t("run_search"), type="primary", use_container_width=True, key="run_search_button"):
+                    queue_run_request()
+                    st.rerun()
+
+        with st.container(border=True):
+            render_panel_lead("标准示例与状态面板", "点击示例会回填到输入框，不会自动检索。", "快速回填")
+            render_metric_grid(
+                [
+                    (t("papers_metric"), stats.get("papers", 0)),
+                    (t("sections_metric"), stats.get("sections", 0)),
+                    (t("semantic_cards_metric"), stats.get("semantic_cards", 0)),
+                    (t("history_metric"), stats.get("intent_histories", 0)),
+                ]
+            )
+            demo_cols = st.columns(2, gap="medium")
+            for index, item in enumerate(demo_queries, start=1):
+                with demo_cols[(index - 1) % 2]:
+                    label = truncate_text(item.get("query", ""), 24)
+                    if st.button(f"示例 {index} · {label}", key=f"main_demo_{index}", use_container_width=True):
+                        apply_demo_query(item, auto_run=False)
+                        st.rerun()
+
+
 # 首页概览区域展示数据库和语义层的总体统计。
 def render_overview(stats: Dict[str, int]) -> None:
-    columns = st.columns(6)
     metrics = [
         (t("papers_metric"), stats["papers"]),
         (t("sections_metric"), stats["sections"]),
@@ -1095,40 +2007,47 @@ def render_overview(stats: Dict[str, int]) -> None:
         (t("history_metric"), stats["intent_histories"]),
         (t("saved_metric"), stats["saved_papers"]),
     ]
-    for column, (label, value) in zip(columns, metrics):
-        with column:
-            st.metric(label, value)
+    render_metric_grid(metrics)
 
 
 def render_system_status_panel(stats: Dict[str, int], state_loaded: bool) -> None:
-    st.markdown(f"**{t('system_status')}**")
-    st.caption(DATASET_LABEL)
-    st.code(DATASET_RELATIVE_PATH)
-    st.code(relative_to_project(get_default_db_path()))
-    st.caption(t("state_file", path=relative_to_project(APP_STATE_PATH)))
-    st.caption(
-        t(
-            "status_summary",
-            papers=stats["papers"],
-            sections=stats["sections"],
-            fts_rows=stats["fts_rows"],
-            semantic_cards=stats["semantic_cards"],
-            intent_histories=stats["intent_histories"],
-            saved_papers=stats["saved_papers"],
-        )
+    dataset_info = get_active_dataset_info()
+    render_panel_lead(t("system_status"), str(dataset_info.get("label", "Dataset")), "运行状态")
+    render_key_value_list(
+        [
+            ("数据集目录", dataset_info.get("display_path", "-")),
+            ("当前数据库", relative_to_project(get_default_db_path())),
+            ("状态文件", relative_to_project(APP_STATE_PATH)),
+            (
+                "统计摘要",
+                t(
+                    "status_summary",
+                    papers=stats["papers"],
+                    sections=stats["sections"],
+                    fts_rows=stats["fts_rows"],
+                    semantic_cards=stats["semantic_cards"],
+                    intent_histories=stats["intent_histories"],
+                    saved_papers=stats["saved_papers"],
+                ),
+            ),
+        ]
     )
     if state_loaded:
         st.caption(t("state_loaded"))
 
 
 def render_llm_runtime_panel() -> None:
-    st.markdown(f"**{t('llm_runtime')}**")
+    render_panel_lead(t("llm_runtime"), "这里仅展示模型连通性和当前接口配置。", "模型连接")
     if OPENAI_API_KEY:
         st.success(t("api_key_detected"))
     else:
         st.error(t("api_key_missing"))
-    st.caption(t("base_url", value=OPENAI_API_BASE))
-    st.caption(t("model_label", value=OPENAI_MODEL))
+    render_key_value_list(
+        [
+            ("Base URL", OPENAI_API_BASE),
+            ("Model", OPENAI_MODEL),
+        ]
+    )
     if st.button(t("test_api"), key="test_api_workbench", use_container_width=True):
         with st.spinner(t("testing_api")):
             ok, message = test_openai_api(OPENAI_API_KEY)
@@ -1139,30 +2058,34 @@ def render_llm_runtime_panel() -> None:
 
 
 def render_runtime_workspace(stats: Dict[str, int], payload: Dict[str, Any] | None, state_loaded: bool) -> None:
-    process_tab, workbench_tab = st.tabs([t("run_process"), t("model_workbench")])
-    with process_tab:
-        if payload:
-            stage_events = payload.get("stage_events", st.session_state.get("latest_stage_events", []))
-            normalized = [event for event in stage_events if clean_text(event.get("label") or event.get("stage"))]
-            if normalized:
-                st.caption(t("run_process_collapsed_hint"))
-                with st.expander(f"{t('run_process_details')}（{len(normalized)}）", expanded=False):
-                    render_stage_events(normalized, live=False, show_header=False)
+    with st.container(border=True):
+        render_panel_lead(f"{t('run_process')} / {t('model_workbench')}", t("runtime_workspace_caption"), "链路工作区")
+        process_tab, workbench_tab = st.tabs([t("run_process"), t("model_workbench")])
+        with process_tab:
+            if payload:
+                stage_events = payload.get("stage_events", st.session_state.get("latest_stage_events", []))
+                normalized = [event for event in stage_events if clean_text(event.get("label") or event.get("stage"))]
+                if normalized:
+                    st.caption(t("run_process_collapsed_hint"))
+                    with st.expander(f"{t('run_process_details')}（{len(normalized)}）", expanded=False):
+                        render_stage_events(normalized, live=False, show_header=False)
+                else:
+                    st.info(t("query_not_run_yet"))
             else:
                 st.info(t("query_not_run_yet"))
-        else:
-            st.info(t("query_not_run_yet"))
-    with workbench_tab:
-        if payload:
-            render_runtime_summary(payload)
-        else:
-            st.info(t("query_not_run_yet"))
-        render_overview(stats)
-        status_col, llm_col = st.columns([3, 2])
-        with status_col:
-            render_system_status_panel(stats, state_loaded)
-        with llm_col:
-            render_llm_runtime_panel()
+        with workbench_tab:
+            if payload:
+                render_runtime_summary(payload)
+            else:
+                st.info(t("query_not_run_yet"))
+            render_overview(stats)
+            status_col, llm_col = st.columns([3, 2], gap="large")
+            with status_col:
+                with st.container(border=True):
+                    render_system_status_panel(stats, state_loaded)
+            with llm_col:
+                with st.container(border=True):
+                    render_llm_runtime_panel()
 
 
 def collect_query_variant_changes(initial_frame: Dict[str, Any], final_frame: Dict[str, Any]) -> List[str]:
@@ -1181,6 +2104,40 @@ def collect_query_variant_changes(initial_frame: Dict[str, Any], final_frame: Di
         if removed:
             changes.append(f"{label} - {clean_text('；'.join(removed[:2]))}")
     return changes
+
+
+def coerce_score(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def summarize_result_quality(results: List[Dict[str, Any]], limit: int = 5) -> Dict[str, Any]:
+    top_slice = list(results[:limit])
+    if not top_slice:
+        return {
+            "slice_size": 0,
+            "main_intent_count": 0,
+            "avg_match_score": 0.0,
+            "avg_final_score": 0.0,
+        }
+
+    main_intent_count = 0
+    match_scores: List[float] = []
+    final_scores: List[float] = []
+    for item in top_slice:
+        query_match = item.get("query_paper_match") or {}
+        if query_match.get("main_intent_satisfied"):
+            main_intent_count += 1
+        match_scores.append(coerce_score(query_match.get("match_score", 0.0)))
+        final_scores.append(coerce_score(item.get("final_score", 0.0)))
+    return {
+        "slice_size": len(top_slice),
+        "main_intent_count": main_intent_count,
+        "avg_match_score": round(sum(match_scores) / max(len(match_scores), 1), 3),
+        "avg_final_score": round(sum(final_scores) / max(len(final_scores), 1), 3),
+    }
 
 
 def build_result_change_summary(previous_payload: Dict[str, Any], current_payload: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -1222,6 +2179,46 @@ def build_result_change_summary(previous_payload: Dict[str, Any], current_payloa
     else:
         headline_key = "result_change_only_removed"
 
+    previous_quality = summarize_result_quality(previous_results)
+    current_quality = summarize_result_quality(current_results)
+    main_before = previous_quality.get("main_intent_count", 0)
+    main_after = current_quality.get("main_intent_count", 0)
+    match_before = previous_quality.get("avg_match_score", 0.0)
+    match_after = current_quality.get("avg_match_score", 0.0)
+    final_before = previous_quality.get("avg_final_score", 0.0)
+    final_after = current_quality.get("avg_final_score", 0.0)
+    match_delta = round(match_after - match_before, 3)
+    final_delta = round(final_after - final_before, 3)
+    main_delta = int(main_after - main_before)
+
+    if main_delta >= 1 or match_delta >= 0.05 or final_delta >= 0.05:
+        convergence_status = "improved"
+        convergence_headline = t(
+            "result_convergence_improved",
+            main_before=main_before,
+            main_after=main_after,
+            match_before=match_before,
+            match_after=match_after,
+        )
+    elif main_delta <= -1 or match_delta <= -0.05 or final_delta <= -0.05:
+        convergence_status = "weakened"
+        convergence_headline = t(
+            "result_convergence_weakened",
+            main_before=main_before,
+            main_after=main_after,
+            match_before=match_before,
+            match_after=match_after,
+        )
+    else:
+        convergence_status = "stable"
+        convergence_headline = t(
+            "result_convergence_stable",
+            main_before=main_before,
+            main_after=main_after,
+            match_before=match_before,
+            match_after=match_after,
+        )
+
     return {
         "headline": t(headline_key),
         "overlap_count": len(overlap_ids),
@@ -1229,6 +2226,10 @@ def build_result_change_summary(previous_payload: Dict[str, Any], current_payloa
         "added_titles": [current_titles.get(paper_id, paper_id) for paper_id in added_ids],
         "removed_titles": [previous_titles.get(paper_id, paper_id) for paper_id in removed_ids],
         "reordered_titles": reordered_items,
+        "quality_before": previous_quality,
+        "quality_after": current_quality,
+        "convergence_status": convergence_status,
+        "convergence_headline": convergence_headline,
     }
 
 
@@ -1257,6 +2258,29 @@ def render_follow_up_convergence(payload: Dict[str, Any]) -> None:
             answered_after=len(final_answered),
         )
     )
+    result_summary = payload.get("result_change_summary") or {}
+    convergence_headline = clean_text(result_summary.get("convergence_headline", ""))
+    if convergence_headline:
+        convergence_status = clean_text(result_summary.get("convergence_status", ""))
+        if convergence_status == "improved":
+            st.success(convergence_headline)
+        elif convergence_status == "weakened":
+            st.warning(convergence_headline)
+        else:
+            st.info(convergence_headline)
+        quality_before = result_summary.get("quality_before") or {}
+        quality_after = result_summary.get("quality_after") or {}
+        st.caption(
+            t(
+                "result_quality_delta",
+                main_before=quality_before.get("main_intent_count", 0),
+                main_after=quality_after.get("main_intent_count", 0),
+                match_before=quality_before.get("avg_match_score", 0.0),
+                match_after=quality_after.get("avg_match_score", 0.0),
+                final_before=quality_before.get("avg_final_score", 0.0),
+                final_after=quality_after.get("avg_final_score", 0.0),
+            )
+        )
     render_string_list(
         t("newly_answered_slots"),
         newly_answered,
@@ -1273,6 +2297,20 @@ def render_result_change_summary(payload: Dict[str, Any]) -> None:
     st.markdown(f"**{t('result_change_summary')}**")
     st.caption(t("result_change_caption"))
     st.info(summary.get("headline", ""))
+    quality_before = summary.get("quality_before") or {}
+    quality_after = summary.get("quality_after") or {}
+    if quality_before or quality_after:
+        st.caption(
+            t(
+                "result_quality_delta",
+                main_before=quality_before.get("main_intent_count", 0),
+                main_after=quality_after.get("main_intent_count", 0),
+                match_before=quality_before.get("avg_match_score", 0.0),
+                match_after=quality_after.get("avg_match_score", 0.0),
+                final_before=quality_before.get("avg_final_score", 0.0),
+                final_after=quality_after.get("avg_final_score", 0.0),
+            )
+        )
     st.caption(
         t(
             "result_overlap_summary",
@@ -1288,63 +2326,79 @@ def render_result_change_summary(payload: Dict[str, Any]) -> None:
 
 
 # 意图面板展示结构化槽位及其当前状态。
-def render_intent_panel(frame: Dict[str, Any]) -> None:
-    st.subheader(t("current_intent"))
-    col1, col2 = st.columns(2)
+def resolve_follow_up_question(frame: Dict[str, Any], follow_up_suggestion: Dict[str, Any] | None = None) -> str:
+    suggestion_payload = follow_up_suggestion or {}
+    question = clean_text(suggestion_payload.get("question", ""))
+    if question:
+        return question
+    return clean_text(frame.get("clarification_question", ""))
+
+
+def describe_follow_up_source(suggestion_payload: Dict[str, Any]) -> str:
+    generator = clean_text(suggestion_payload.get("generator", ""))
+    used_fallback = bool(suggestion_payload.get("used_fallback"))
+    if generator == "llm" and used_fallback:
+        return "LLM 生成（含兜底修复）"
+    return {"llm": "LLM 生成", "rule": "规则兜底"}.get(generator, "系统建议")
+
+
+def render_intent_panel(frame: Dict[str, Any], follow_up_suggestion: Dict[str, Any] | None = None) -> None:
+    col1, col2 = st.columns(2, gap="large")
     with col1:
-        st.markdown(f"**{t('search_scene')}**")
-        st.write(slot_display(frame.get("search_scene", {}), "search_scene"))
-        st.markdown(f"**{t('research_topic')}**")
-        st.write(
-            " | ".join(
+        with st.container(border=True):
+            render_panel_lead(t("current_intent"), "系统先把自然语言需求整理成结构化意图，再进入检索主链路。", "意图概览")
+            render_key_value_list(
                 [
-                    slot_display(frame["research_topic"]["domain"]),
-                    slot_display(frame["research_topic"]["task"]),
-                    slot_display(frame["research_topic"]["problem"]),
+                    (t("search_scene"), slot_display(frame.get("search_scene", {}), "search_scene")),
+                    (
+                        t("research_topic"),
+                        " | ".join(
+                            [
+                                slot_display(frame["research_topic"]["domain"]),
+                                slot_display(frame["research_topic"]["task"]),
+                                slot_display(frame["research_topic"]["problem"]),
+                            ]
+                        ),
+                    ),
+                    (t("topic_keywords"), slot_display(frame["research_topic"]["keywords"])),
                 ]
             )
-        )
-        st.markdown(f"**{t('topic_keywords')}**")
-        st.write(slot_display(frame["research_topic"]["keywords"]))
     with col2:
-        st.markdown(f"**{t('technical_constraints')}**")
-        for label_key, slot in [
-            ("method", frame["technical_constraints"]["method"]),
-            ("model_family", frame["technical_constraints"]["model_family"]),
-            ("dataset", frame["technical_constraints"]["dataset"]),
-            ("metric", frame["technical_constraints"]["metric"]),
-            ("modality", frame["technical_constraints"]["modality"]),
-        ]:
-            st.write(f"{t(label_key)}: {slot_display(slot)}")
+        with st.container(border=True):
+            render_panel_lead("约束与偏好", "这里汇总技术约束、文档属性和结果偏好。", "检索条件")
+            render_key_value_list(
+                [
+                    (t("method"), slot_display(frame["technical_constraints"]["method"])),
+                    (t("model_family"), slot_display(frame["technical_constraints"]["model_family"])),
+                    (t("dataset"), slot_display(frame["technical_constraints"]["dataset"])),
+                    (t("metric"), slot_display(frame["technical_constraints"]["metric"])),
+                    (t("modality"), slot_display(frame["technical_constraints"]["modality"])),
+                    (t("time_range"), slot_display(frame["document_attributes"]["time_range"], "document_attributes.time_range")),
+                    (t("paper_type"), slot_display(frame["document_attributes"]["paper_type"], "document_attributes.paper_type")),
+                    (t("author_name"), slot_display(frame["document_attributes"]["author_name"], "")),
+                    (t("title_hint"), slot_display(frame["document_attributes"]["title_hint"], "")),
+                    (
+                        t("result_preferences"),
+                        " | ".join(
+                            [
+                                f"{t('prefer_recent')}={slot_display(frame['result_preferences']['prefer_recent'], 'result_preferences.prefer_recent')}",
+                                f"{t('prefer_classic')}={slot_display(frame['result_preferences']['prefer_classic'], 'result_preferences.prefer_classic')}",
+                                f"{t('prefer_survey')}={slot_display(frame['result_preferences']['prefer_survey'], 'result_preferences.prefer_survey')}",
+                                f"{t('prefer_diverse')}={slot_display(frame['result_preferences']['prefer_diverse'], 'result_preferences.prefer_diverse')}",
+                                f"{t('need_explainable_reason')}={slot_display(frame['result_preferences']['need_explainable_reason'], 'result_preferences.need_explainable_reason')}",
+                            ]
+                        ),
+                    ),
+                ]
+            )
 
-        st.markdown(f"**{t('document_attributes')}**")
-        for label_key, slot, slot_key in [
-            ("time_range", frame["document_attributes"]["time_range"], "document_attributes.time_range"),
-            ("paper_type", frame["document_attributes"]["paper_type"], "document_attributes.paper_type"),
-            ("author_name", frame["document_attributes"]["author_name"], ""),
-            ("title_hint", frame["document_attributes"]["title_hint"], ""),
-        ]:
-            st.write(f"{t(label_key)}: {slot_display(slot, slot_key)}")
+    clarification_question = resolve_follow_up_question(frame, follow_up_suggestion)
+    if frame.get("clarification_needed") and clarification_question:
+        st.warning(clarification_question)
 
-        st.markdown(f"**{t('result_preferences')}**")
-        for label_key, slot, slot_key in [
-            ("prefer_recent", frame["result_preferences"]["prefer_recent"], "result_preferences.prefer_recent"),
-            ("prefer_classic", frame["result_preferences"]["prefer_classic"], "result_preferences.prefer_classic"),
-            ("prefer_survey", frame["result_preferences"]["prefer_survey"], "result_preferences.prefer_survey"),
-            ("prefer_diverse", frame["result_preferences"]["prefer_diverse"], "result_preferences.prefer_diverse"),
-            (
-                "need_explainable_reason",
-                frame["result_preferences"]["need_explainable_reason"],
-                "result_preferences.need_explainable_reason",
-            ),
-        ]:
-            st.write(f"{t(label_key)}: {slot_display(slot, slot_key)}")
-
-    if frame.get("clarification_needed") and frame.get("clarification_question"):
-        st.warning(frame["clarification_question"])
-
-    with st.expander(t("intentframe_raw_json")):
-        st.json(frame)
+    with st.container(border=True):
+        with st.expander(t("intentframe_raw_json")):
+            st.json(frame)
 
 
 # Gap 面板解释当前结果为什么还宽，以及下一步补什么最有效。
@@ -1354,63 +2408,145 @@ def render_gap_panel(
     frame: Dict[str, Any],
     follow_up_suggestion: Dict[str, Any] | None = None,
 ) -> None:
-    render_string_list(
-        t("next_answer_helpful"),
-        gap_report.get("what_next_answer_would_improve", []),
-        t("results_usable"),
-    )
-    if clarification_needed:
-        st.warning(t("clarification_needed_caption"))
-    else:
-        st.caption(t("clarification_optional_caption"))
-    suggestion_payload = follow_up_suggestion or {}
-    suggested_reply = clean_text(suggestion_payload.get("draft", "")) or build_follow_up_draft(frame, gap_report)
-    if suggested_reply:
-        generator = clean_text(suggestion_payload.get("generator", ""))
-        source_label = {"llm": "LLM 生成", "rule": "规则兜底"}.get(generator, "系统建议")
-        st.success(f"{t('suggested_follow_up')}（{source_label}）")
-        st.write(suggested_reply)
-        suggestion_meta = []
-        rationale = clean_text(suggestion_payload.get("rationale", ""))
-        if rationale:
-            suggestion_meta.append(rationale)
-        used_model = clean_text(suggestion_payload.get("used_model", ""))
-        if used_model:
-            suggestion_meta.append(f"模型：{used_model}")
-        if suggestion_meta:
-            st.caption(" | ".join(suggestion_meta))
-        if st.button(t("fill_suggested_follow_up"), key="fill_gap_follow_up", use_container_width=True):
-            st.session_state["gap_follow_up_input"] = suggested_reply
-    st.markdown(f"**{t('follow_up_entry')}**")
-    st.text_area(
-        t("supplementary_reply"),
-        key="gap_follow_up_input",
-        height=80,
-        placeholder=suggested_reply or t("supplementary_reply_placeholder"),
-    )
-    if st.button(t("continue_search"), key="run_gap_follow_up", use_container_width=True):
-        reply = clean_text(st.session_state.get("gap_follow_up_input", ""))
-        if not reply:
-            st.warning(t("fill_reply_warning"))
-        else:
-            run_query(follow_up_override=reply)
-    with st.expander(t("gap_details"), expanded=clarification_needed):
-        render_string_list(t("missing_slots"), gap_report.get("query_gap", []), t("no_missing_slots"))
-        render_string_list(t("evidence_gap"), gap_report.get("evidence_gap", []), t("no_evidence_gap"))
-        render_string_list(
-            t("matched_dimensions"),
-            gap_report.get("matched_dimensions", []),
-            t("no_matched_dimensions"),
-            formatter=localize_dimension_text,
-        )
-        render_string_list(
-            t("why_results_broad"),
-            gap_report.get("why_current_results_are_broad", []),
-            t("results_focused"),
-        )
+    left_col, right_col = st.columns([1.02, 1.15], gap="large")
+    with left_col:
+        with st.container(border=True):
+            render_panel_lead(t("gap_analysis"), "系统说明当前结果为什么还偏宽，以及下一步该补充什么。", "缺口诊断")
+            render_string_list(
+                t("next_answer_helpful"),
+                gap_report.get("what_next_answer_would_improve", []),
+                t("results_usable"),
+            )
+            with st.expander(t("gap_details"), expanded=clarification_needed):
+                render_string_list(t("missing_slots"), gap_report.get("query_gap", []), t("no_missing_slots"))
+                render_string_list(t("evidence_gap"), gap_report.get("evidence_gap", []), t("no_evidence_gap"))
+                render_string_list(
+                    t("matched_dimensions"),
+                    gap_report.get("matched_dimensions", []),
+                    t("no_matched_dimensions"),
+                    formatter=localize_dimension_text,
+                )
+                render_string_list(
+                    t("why_results_broad"),
+                    gap_report.get("why_current_results_are_broad", []),
+                    t("results_focused"),
+                )
+    with right_col:
+        with st.container(border=True):
+            render_panel_lead(t("follow_up_workspace"), "优先补充最影响重排收敛的信息。", "追问补充")
+            if clarification_needed:
+                st.warning(t("clarification_needed_caption"))
+            else:
+                st.caption(t("clarification_optional_caption"))
+            suggestion_payload = follow_up_suggestion or {}
+            clarification_question = resolve_follow_up_question(frame, suggestion_payload)
+            if clarification_question:
+                st.info(clarification_question)
+            suggested_reply = clean_text(suggestion_payload.get("draft", ""))
+            if suggested_reply:
+                source_label = describe_follow_up_source(suggestion_payload)
+                source_label = {"llm": "LLM 生成", "rule": "规则兜底"}.get(generator, "系统建议")
+                st.success(f"{t('suggested_follow_up')}（{source_label}）")
+                st.write(suggested_reply)
+                suggestion_meta = []
+                rationale = clean_text(suggestion_payload.get("rationale", ""))
+                if rationale:
+                    suggestion_meta.append(rationale)
+                used_model = clean_text(suggestion_payload.get("used_model", ""))
+                if used_model:
+                    suggestion_meta.append(f"模型：{used_model}")
+                if suggestion_meta:
+                    st.caption(" | ".join(suggestion_meta))
+                if st.button(t("fill_suggested_follow_up"), key="fill_gap_follow_up", use_container_width=True):
+                    st.session_state["gap_follow_up_input"] = suggested_reply
+            st.markdown(f"**{t('follow_up_entry')}**")
+            st.text_area(
+                t("supplementary_reply"),
+                key="gap_follow_up_input",
+                height=100,
+                placeholder=suggested_reply or t("supplementary_reply_placeholder"),
+            )
+            if st.button(t("continue_search"), key="run_gap_follow_up", use_container_width=True):
+                reply = clean_text(st.session_state.get("gap_follow_up_input", ""))
+                if not reply:
+                    st.warning(t("fill_reply_warning"))
+                else:
+                    queue_run_request(follow_up_override=reply)
+                    st.rerun()
 
 
 # 收藏动作会直接同步到数据库，并刷新页面状态。
+def render_gap_panel(
+    gap_report: Dict[str, Any],
+    clarification_needed: bool,
+    frame: Dict[str, Any],
+    follow_up_suggestion: Dict[str, Any] | None = None,
+) -> None:
+    left_col, right_col = st.columns([1.02, 1.15], gap="large")
+    with left_col:
+        with st.container(border=True):
+            render_panel_lead(t("gap_analysis"), "系统说明当前结果为什么还偏宽，以及下一步该补充什么。", "缺口诊断")
+            render_string_list(
+                t("next_answer_helpful"),
+                gap_report.get("what_next_answer_would_improve", []),
+                t("results_usable"),
+            )
+            with st.expander(t("gap_details"), expanded=clarification_needed):
+                render_string_list(t("missing_slots"), gap_report.get("query_gap", []), t("no_missing_slots"))
+                render_string_list(t("evidence_gap"), gap_report.get("evidence_gap", []), t("no_evidence_gap"))
+                render_string_list(
+                    t("matched_dimensions"),
+                    gap_report.get("matched_dimensions", []),
+                    t("no_matched_dimensions"),
+                    formatter=localize_dimension_text,
+                )
+                render_string_list(
+                    t("why_results_broad"),
+                    gap_report.get("why_current_results_are_broad", []),
+                    t("results_focused"),
+                )
+    with right_col:
+        with st.container(border=True):
+            render_panel_lead(t("follow_up_workspace"), "优先补充最影响重排收敛的信息。", "追问补充")
+            if clarification_needed:
+                st.warning(t("clarification_needed_caption"))
+            else:
+                st.caption(t("clarification_optional_caption"))
+            suggestion_payload = follow_up_suggestion or {}
+            clarification_question = resolve_follow_up_question(frame, suggestion_payload)
+            if clarification_question:
+                st.info(clarification_question)
+            suggested_reply = clean_text(suggestion_payload.get("draft", ""))
+            if suggested_reply:
+                st.success(f"{t('suggested_follow_up')}（{describe_follow_up_source(suggestion_payload)}）")
+                st.write(suggested_reply)
+                suggestion_meta = []
+                rationale = clean_text(suggestion_payload.get("rationale", ""))
+                if rationale:
+                    suggestion_meta.append(rationale)
+                used_model = clean_text(suggestion_payload.get("used_model", ""))
+                if used_model:
+                    suggestion_meta.append(f"模型：{used_model}")
+                if suggestion_meta:
+                    st.caption(" | ".join(suggestion_meta))
+                if st.button(t("fill_suggested_follow_up"), key="fill_gap_follow_up", use_container_width=True):
+                    st.session_state["gap_follow_up_input"] = suggested_reply
+            st.markdown(f"**{t('follow_up_entry')}**")
+            st.text_area(
+                t("supplementary_reply"),
+                key="gap_follow_up_input",
+                height=100,
+                placeholder=suggested_reply or t("supplementary_reply_placeholder"),
+            )
+            if st.button(t("continue_search"), key="run_gap_follow_up", use_container_width=True):
+                reply = clean_text(st.session_state.get("gap_follow_up_input", ""))
+                if not reply:
+                    st.warning(t("fill_reply_warning"))
+                else:
+                    queue_run_request(follow_up_override=reply)
+                    st.rerun()
+
+
 def toggle_saved_state(paper_id: str, saved_ids: set[str]) -> None:
     if paper_id in saved_ids:
         unsave_paper(paper_id)
@@ -1433,6 +2569,16 @@ def build_result_metadata(result: Dict[str, Any]) -> List[str]:
     return metadata
 
 
+def build_explanation_caption(result: Dict[str, Any]) -> str:
+    source = describe_result_source(result)
+    used_model = clean_text(result.get("used_model", ""))
+    if used_model:
+        return f"LLM 排序解释来源：{source} | 模型：{used_model}"
+    if source and source != "-":
+        return f"排序解释来源：{source}"
+    return ""
+
+
 # Top-K 摘要默认直接展开，优先给出可快速扫描的重点信息。
 def render_result_summary_card(
     rank: int,
@@ -1442,41 +2588,51 @@ def render_result_summary_card(
     query_match = result.get("query_paper_match") or {}
     matched_dimensions = query_match.get("matched_dimensions", [])
     label = t("unsave_paper") if result["paper_id"] in saved_ids else t("save_paper")
-    header_left, header_right = st.columns([6, 1])
-    with header_left:
-        st.markdown(f"#### Top {rank}. {result['title']}")
-        st.caption(
-            t(
-                "result_summary",
-                authors=result.get("authors_raw", ""),
-                year_month=result.get("year_month", ""),
-                final_score=result.get("final_score", 0),
-                match_score=query_match.get("match_score", 0),
+    with st.container(border=True):
+        header_left, header_right = st.columns([6, 1], gap="medium")
+        with header_left:
+            paper_type = translate_mapping_value(result.get("paper_type", ""), PAPER_TYPE_LABELS) or "论文"
+            st.markdown(
+                f"<div class='pc-result-kicker'>结果 {rank} · {html.escape(paper_type)} · 最终得分 {result.get('final_score', 0):.3f}</div>",
+                unsafe_allow_html=True,
             )
+            st.markdown(f"#### {result['title']}")
+            st.markdown(
+                f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(result.get('authors_raw', '')))} | {html.escape(clean_text(result.get('year_month', '')))} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
+                unsafe_allow_html=True,
+            )
+        with header_right:
+            if st.button(label, key=f"save_toggle_summary_{result['paper_id']}", use_container_width=True):
+                toggle_saved_state(result["paper_id"], saved_ids)
+
+        metadata = build_result_metadata(result)
+        if metadata:
+            render_chip_row(metadata, tone="soft")
+
+        summary_chips = [
+            f"主意图{'已满足' if query_match.get('main_intent_satisfied') else '未满足'}",
+            f"时间编码 {clean_text(result.get('year_month', ''))}",
+        ]
+        render_chip_row(summary_chips, tone="good" if query_match.get("main_intent_satisfied") else "soft")
+
+        st.markdown(f"**{t('ranking_explanation')}**")
+        explanation_caption = build_explanation_caption(result)
+        if explanation_caption:
+            st.caption(explanation_caption)
+        st.write(query_match.get("brief_reason", t("no_match_explanation")))
+        render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
+        render_string_list(
+            t("matched_dimensions"),
+            matched_dimensions,
+            t("no_matched_dimensions"),
+            formatter=localize_dimension_text,
         )
-    with header_right:
-        if st.button(label, key=f"save_toggle_summary_{result['paper_id']}", use_container_width=True):
-            toggle_saved_state(result["paper_id"], saved_ids)
-
-    metadata = build_result_metadata(result)
-    if metadata:
-        st.caption(" | ".join(metadata))
-
-    st.markdown(f"**{t('ranking_explanation')}**")
-    st.write(query_match.get("brief_reason", t("no_match_explanation")))
-    render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
-    render_string_list(
-        t("matched_dimensions"),
-        matched_dimensions,
-        t("no_matched_dimensions"),
-        formatter=localize_dimension_text,
-    )
-    render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
-    abstract_preview = truncate_text(result.get("abstract", ""))
-    if abstract_preview:
-        st.markdown(f"**{t('abstract_preview')}**")
-        st.write(abstract_preview)
-    st.caption(t("detail_expand_hint"))
+        render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
+        abstract_preview = truncate_text(result.get("abstract", ""))
+        if abstract_preview:
+            st.markdown(f"**{t('abstract_preview')}**")
+            st.write(abstract_preview)
+        st.caption(t("detail_expand_hint"))
 
 
 # 论文详情区保留完整摘要、命中证据和可调试的结构化输出。
@@ -1490,94 +2646,102 @@ def render_result_detail_card(
     query_match = result.get("query_paper_match") or {}
     label = t("unsave_paper") if result["paper_id"] in saved_ids else t("save_paper")
     with st.expander(f"Top {rank}. {result['title']}", expanded=rank == 1):
-        header_left, header_right = st.columns([6, 1])
-        with header_left:
-            st.caption(
-                t(
-                    "result_summary",
-                    authors=result.get("authors_raw", ""),
-                    year_month=result.get("year_month", ""),
-                    final_score=result.get("final_score", 0),
-                    match_score=query_match.get("match_score", 0),
+        with st.container(border=True):
+            header_left, header_right = st.columns([6, 1], gap="medium")
+            with header_left:
+                st.markdown(
+                    f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(result.get('authors_raw', '')))} | {html.escape(clean_text(result.get('year_month', '')))} | 最终得分 {result.get('final_score', 0):.3f} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
+                    unsafe_allow_html=True,
                 )
-            )
-        with header_right:
-            if st.button(label, key=f"save_toggle_detail_{result['paper_id']}", use_container_width=True):
-                toggle_saved_state(result["paper_id"], saved_ids)
+            with header_right:
+                if st.button(label, key=f"save_toggle_detail_{result['paper_id']}", use_container_width=True):
+                    toggle_saved_state(result["paper_id"], saved_ids)
 
-        metadata = build_result_metadata(result)
-        if metadata:
-            st.caption(" | ".join(metadata))
+            metadata = build_result_metadata(result)
+            if metadata:
+                render_chip_row(metadata, tone="soft")
 
-        render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
-        render_string_list(
-            t("matched_dimensions"),
-            query_match.get("matched_dimensions", []),
-            t("no_matched_dimensions"),
-            formatter=localize_dimension_text,
-        )
-        render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
+            body_left, body_right = st.columns([1.15, 0.95], gap="large")
+            with body_left:
+                render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
+                render_string_list(
+                    t("matched_dimensions"),
+                    query_match.get("matched_dimensions", []),
+                    t("no_matched_dimensions"),
+                    formatter=localize_dimension_text,
+                )
+                render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
+                st.markdown(f"**{t('abstract')}**")
+                st.write(result.get("abstract", ""))
+            with body_right:
+                render_string_list(t("matched_sections"), evidence_pack.get("matched_sections", []), t("no_matched_sections"))
+                render_string_list(
+                    t("matched_snippets"),
+                    [
+                        f"{localize_field_text(item.get('field', ''))}: {item.get('snippet', '')}"
+                        for item in evidence_pack.get("matched_snippets", [])
+                    ],
+                    t("no_matched_snippets"),
+                )
+                st.markdown(f"**{t('ranking_explanation')}**")
+                explanation_caption = build_explanation_caption(result)
+                if explanation_caption:
+                    st.caption(explanation_caption)
+                st.write(query_match.get("brief_reason", t("no_match_explanation")))
 
-        st.markdown(f"**{t('abstract')}**")
-        st.write(result.get("abstract", ""))
+            with st.expander(t("semantic_card")):
+                st.json(evidence_pack.get("semantic_card", {}))
 
-        render_string_list(t("matched_sections"), evidence_pack.get("matched_sections", []), t("no_matched_sections"))
-        render_string_list(
-            t("matched_snippets"),
-            [
-                f"{localize_field_text(item.get('field', ''))}: {item.get('snippet', '')}"
-                for item in evidence_pack.get("matched_snippets", [])
-            ],
-            t("no_matched_snippets"),
-        )
+            with st.expander(t("query_paper_match")):
+                st.json(query_match)
 
-        st.markdown(f"**{t('ranking_explanation')}**")
-        st.write(query_match.get("brief_reason", t("no_match_explanation")))
-
-        with st.expander(t("semantic_card")):
-            st.json(evidence_pack.get("semantic_card", {}))
-
-        with st.expander(t("query_paper_match")):
-            st.json(query_match)
-
-        if show_raw_json:
-            with st.expander(t("raw_result_json")):
-                st.json(result)
+            if show_raw_json:
+                with st.expander(t("raw_result_json")):
+                    st.json(result)
 
 
 # 管理区集中展示收藏、历史和标准演示。
-def render_management_area(standard_queries: List[Dict[str, Any]], *, show_header: bool = True) -> None:
+def render_management_area(demo_queries: List[Dict[str, Any]], *, show_header: bool = True) -> None:
     if show_header:
         st.subheader(t("management_area"))
-    saved_tab, history_tab, demos_tab = st.tabs([t("saved_papers_tab"), t("history_tab"), t("standard_demos_tab")])
+    saved_col, history_col, demos_col = st.columns([1.05, 1.2, 1.1], gap="large")
 
-    with saved_tab:
-        saved_items = list_saved_papers(limit=50)
-        if not saved_items:
-            st.info(t("no_saved_papers"))
-        else:
-            for item in saved_items:
-                st.write(f"- {item['title']} | {item['authors_raw']} | {item['year_month']}")
+    with saved_col:
+        with st.container(border=True):
+            render_panel_lead(t("saved_papers_tab"), "收藏后的论文会沉淀在这里，便于后续写作和比对。", "管理区")
+            saved_items = list_saved_papers(limit=50)
+            if not saved_items:
+                st.info(t("no_saved_papers"))
+            else:
+                render_string_list(
+                    t("saved_papers_tab"),
+                    [f"{item['title']} | {format_authors_for_display(item['authors_raw'])} | {item['year_month']}" for item in saved_items],
+                    t("no_saved_papers"),
+                )
 
-    with history_tab:
-        history_items = list_search_history(limit=20)
-        if not history_items:
-            st.info(t("no_history"))
-        else:
-            for item in history_items:
-                st.write(f"- {item['created_at']} | {item['query_text']}")
+    with history_col:
+        with st.container(border=True):
+            render_panel_lead(t("history_tab"), "按时间回看自然语言查询与追问记录。", "管理区")
+            history_items = list_search_history(limit=20)
+            if not history_items:
+                st.info(t("no_history"))
+            else:
+                render_string_list(
+                    t("history_tab"),
+                    [f"{item['created_at']} | {item['query_text']}" for item in history_items],
+                    t("no_history"),
+                )
 
-    with demos_tab:
-        for index, item in enumerate(standard_queries, start=1):
-            col_query, col_action = st.columns([5, 1])
-            with col_query:
-                st.write(f"{index}. {item['query']}")
-                if item.get("follow_up_reply"):
-                    st.caption(t("follow_up_reply_label", value=item["follow_up_reply"]))
-            with col_action:
-                if st.button(t("replay"), key=f"replay_demo_{index}", use_container_width=True):
+    with demos_col:
+        with st.container(border=True):
+            render_panel_lead(t("standard_demos_tab"), "用于课堂演示、论文截图和固定样例回放。", "管理区")
+            for index, item in enumerate(demo_queries, start=1):
+                query_label = truncate_text(item["query"], 46)
+                if st.button(f"{index}. {query_label}", key=f"replay_demo_{index}", use_container_width=True):
                     apply_demo_query(item, auto_run=True)
                     st.rerun()
+                if item.get("follow_up_reply"):
+                    st.caption(t("follow_up_reply_label", value=item["follow_up_reply"]))
 
 
 # 收集界面输入并执行一次完整主链路。
@@ -1591,15 +2755,19 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
     if not query:
         st.warning(t("enter_query_first"))
         return
+    st.session_state["_pending_live_process_scroll"] = True
+    scroll_placeholder = st.empty()
     progress_placeholder = st.empty()
     stage_events: List[Dict[str, Any]] = []
+
+    with scroll_placeholder.container():
+        render_anchor_autoscroll(LIVE_PROCESS_SCROLL_ANCHOR)
 
     def update_progress(event: Dict[str, Any]) -> None:
         stage_events.append(dict(event))
         st.session_state["latest_stage_events"] = list(stage_events)
-        preview = stage_events[-5:]
         progress_placeholder.markdown(
-            build_stage_events_markup(preview, live=True),
+            build_stage_events_markup(stage_events, live=True),
             unsafe_allow_html=True,
         )
 
@@ -1626,10 +2794,12 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
             stage_callback=update_progress,
         )
     except Exception as exc:
+        scroll_placeholder.empty()
         progress_placeholder.empty()
         st.session_state.pop("latest_payload", None)
         st.error(str(exc) or t("run_failed"))
         return
+    scroll_placeholder.empty()
     progress_placeholder.empty()
     st.session_state["latest_stage_events"] = payload.get("stage_events", stage_events)
     if (
@@ -1644,11 +2814,12 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
 
 # 页面总入口：负责状态检查、表单渲染和结果展示。
 def main() -> None:
+    dataset_info = get_active_dataset_info()
     st.session_state.setdefault("ui_language", "zh")
     st.set_page_config(page_title="PaperCompass", layout="wide")
     inject_runtime_process_styles()
     st.title("PaperCompass")
-    st.caption(t("page_caption", dataset=DATASET_LABEL))
+    st.caption(t("page_caption", dataset=str(dataset_info.get("label", "Dataset"))))
     apply_pending_query_state()
 
     if not project_database_exists():
@@ -1662,57 +2833,33 @@ def main() -> None:
         return
 
     app_state = load_app_state()
-    standard_queries = load_standard_queries()
+    demo_queries = load_demo_queries()
 
+    render_hero_banner(stats)
     render_section_header(1, t("search_input"), t("search_input_caption"), anchor_id=STEP_SECTION_ANCHORS[1])
-    st.caption(
-        t(
-            "search_status",
-            db_path=relative_to_project(get_default_db_path()),
-            papers=stats.get("papers", 0),
-            llm_status=t("api_key_configured") if OPENAI_API_KEY else t("api_key_unconfigured"),
-        )
+    st.markdown(
+        f"<div class='pc-note'>{html.escape(t('search_status', db_path=relative_to_project(get_default_db_path()), papers=stats.get('papers', 0), llm_status=t('api_key_configured') if OPENAI_API_KEY else t('api_key_unconfigured')))}</div>",
+        unsafe_allow_html=True,
     )
-    st.text_area(
-        t("natural_language_query"),
-        key="query_input",
-        height=110,
-        placeholder=t("query_placeholder"),
-    )
-    st.text_area(
-        t("optional_follow_up"),
-        key="follow_up_input",
-        height=80,
-        placeholder=t("follow_up_placeholder"),
-    )
-    with st.expander(t("search_config"), expanded=False):
-        config_col1, config_col2, config_col3 = st.columns(3)
-        with config_col1:
-            st.number_input("Top-K", min_value=3, max_value=10, value=5, step=1, key="top_k_input")
-        with config_col2:
-            st.number_input(
-                t("candidate_pool_size"),
-                min_value=20,
-                max_value=120,
-                value=40,
-                step=10,
-                key="candidate_pool_input",
-            )
-        with config_col3:
-            st.number_input(t("explain_limit"), min_value=3, max_value=10, value=5, step=1, key="explain_limit_input")
-    st.button(t("run_search"), type="primary", use_container_width=True, on_click=run_query)
-
-    if st.session_state.pop("_pending_auto_run_query", False):
-        run_query()
-
-    payload = st.session_state.get("latest_payload")
-    show_raw_json = render_sidebar(standard_queries, bool(payload))
+    render_search_workspace(stats, demo_queries)
     render_section_header(
         2,
         f"{t('run_process')} / {t('model_workbench')}",
         t("runtime_workspace_caption"),
         anchor_id=STEP_SECTION_ANCHORS[2],
     )
+    st.markdown(f"<div id='{LIVE_PROCESS_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
+    if st.session_state.pop("_pending_live_process_scroll", False):
+        render_anchor_autoscroll(LIVE_PROCESS_SCROLL_ANCHOR)
+
+    pending_run_query = st.session_state.pop("_pending_run_query", False)
+    pending_query_override = st.session_state.pop("_pending_run_query_override", "")
+    pending_follow_up_override = st.session_state.pop("_pending_run_follow_up_override", "")
+    if st.session_state.pop("_pending_auto_run_query", False) or pending_run_query:
+        run_query(query_override=pending_query_override, follow_up_override=pending_follow_up_override)
+
+    payload = st.session_state.get("latest_payload")
+    show_raw_json = render_sidebar(demo_queries, bool(payload))
     render_runtime_workspace(stats, payload, bool(app_state))
 
     if not payload:
@@ -1722,7 +2869,7 @@ def main() -> None:
             t("management_workspace_caption"),
             anchor_id=STEP_SECTION_ANCHORS[7],
         )
-        render_management_area(standard_queries, show_header=False)
+        render_management_area(demo_queries, show_header=False)
         return
 
     render_section_header(
@@ -1731,7 +2878,7 @@ def main() -> None:
         t("system_understanding_caption"),
         anchor_id=STEP_SECTION_ANCHORS[3],
     )
-    render_intent_panel(payload["final_intent_frame"])
+    render_intent_panel(payload["final_intent_frame"], payload.get("follow_up_suggestion"))
 
     render_section_header(
         4,
@@ -1794,7 +2941,7 @@ def main() -> None:
         t("management_workspace_caption"),
         anchor_id=STEP_SECTION_ANCHORS[7],
     )
-    render_management_area(standard_queries, show_header=False)
+    render_management_area(demo_queries, show_header=False)
 
 
 if __name__ == "__main__":

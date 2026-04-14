@@ -1,36 +1,6 @@
 [
   {
     "stage": "query_paper_match_fallback",
-    "paper_id": "2502.08820",
-    "title": "Can a Single Model Master Both Multi-turn Conversations and Tool Use?CoALM: A Unified Conversational Agentic Language Model",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.02046",
-    "title": "Contextual Memory Reweaving in Large Language Models Using Layered Latent State Reconstruction",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.00409",
-    "title": "Title not found",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.14429",
-    "title": "Early-Exit and Instant Confidence Translation Quality Estimation",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
-    "paper_id": "2502.12755",
-    "title": "Efficient Machine Translation Corpus Generation: Integrating Human-in-the-Loop Post-Editing with Large Language Models",
-    "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
-  },
-  {
-    "stage": "query_paper_match_fallback",
     "paper_id": "2502.11223",
     "title": "Asymmetric Conflict and Synergy in Post-training for LLM-based Multilingual Machine Translation",
     "error": "核心语义能力不可用：query-paper 匹配依赖 LLM。stress test fallback mode"
@@ -3030,5 +3000,78 @@
     ],
     "error": "'list' object has no attribute 'get'",
     "timestamp": "2026-04-08T15:23:02.148895+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "1805.01676",
+      "1708.03186",
+      "1803.11112",
+      "2408.03150",
+      "2401.10016",
+      "1708.03271",
+      "2110.10472",
+      "2011.04845"
+    ],
+    "error": "Expected JSON object.: line 1 column 1 (char 0)",
+    "timestamp": "2026-04-12T20:48:03.634623+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2405.07437",
+      "2404.19543",
+      "2412.02563",
+      "2309.01431",
+      "2406.11424",
+      "2404.12065",
+      "2409.15815"
+    ],
+    "error": "Expected JSON object.: line 1 column 1 (char 0)",
+    "timestamp": "2026-04-13T14:31:35.678959+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2309.15217",
+      "2412.13799",
+      "2406.12566",
+      "2409.06595",
+      "2501.09136",
+      "2408.02545",
+      "2407.11005",
+      "2412.01709"
+    ],
+    "error": "Expected JSON object.: line 1 column 1 (char 0)",
+    "timestamp": "2026-04-13T14:31:38.427604+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2001.06785",
+      "2303.05309",
+      "2406.17363",
+      "1911.12071",
+      "2411.07387",
+      "2006.02814",
+      "2110.13877",
+      "1810.07652"
+    ],
+    "error": "Expected JSON object.: line 1 column 1 (char 0)",
+    "timestamp": "2026-04-13T18:16:53.481158+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2105.03095",
+      "2306.11252",
+      "2107.06010",
+      "2102.01757",
+      "2212.05479",
+      "2210.08174",
+      "2006.02490"
+    ],
+    "error": "Expected JSON object.: line 1 column 1 (char 0)",
+    "timestamp": "2026-04-13T18:16:58.929572+00:00"
   }
 ]

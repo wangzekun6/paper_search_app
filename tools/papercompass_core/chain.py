@@ -40,7 +40,14 @@ from .config import (
     relative_to_project,
     write_json,
 )
-from .llm import OPENAI_API_KEY, OPENAI_MODEL, OpenAIAPIError, structured_chat_completion, test_openai_api
+from .llm import (
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OpenAIAPIError,
+    is_transient_openai_error_message,
+    structured_chat_completion,
+    test_openai_api,
+)
 OUTPUT_DIR = SYSTEM_OUTPUT_DIR
 EXPLANATION_PROMPT_PATH = QUERY_PAPER_MATCH_PROMPT_PATH
 LEGACY_EXPLANATION_PROMPT_PATH = LEGACY_QUERY_PAPER_MATCH_PROMPT_PATH
@@ -66,18 +73,20 @@ DEFAULT_EXPLANATION_WORKERS = 4
 DEFAULT_QUERY_MATCH_BATCH_SIZE = 8
 DEFAULT_QUERY_MATCH_SECTION_LIMIT = 2
 DEFAULT_QUERY_MATCH_SNIPPET_LIMIT = 2
-DEFAULT_LLM_MATCH_MIN_LIMIT = 18
+DEFAULT_LLM_MATCH_MIN_LIMIT = 8
+INLINE_SEMANTIC_BACKFILL_MAX_PAPERS = 0
+SYNC_QUERY_MATCH_MAX_UNCACHED = 0
 DEFAULT_LLM_MATCH_SCORE_GAP = 0.06
 DEFAULT_LLM_MATCH_NEIGHBOR_GAP = 0.025
 DEFAULT_STANDARD_QUERY_SEMANTIC_TOP_N = 6
 DEFAULT_STANDARD_QUERY_SEMANTIC_MIN_FREQUENCY = 2
-QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v4"
+QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v6"
 QUERY_MATCH_PROMPT_VERSION = "query_paper_match_v4"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 DENSE_INDEX_CACHE: Dict[str, Dict[str, Any]] = {}
 MAX_ERROR_LOG_ENTRIES = 500
-DENSE_INDEX_CACHE_VERSION = "dense_index_v1"
+DENSE_INDEX_CACHE_VERSION = "dense_index_v3"
 DENSE_INDEX_DISK_CACHE_SUBDIR = "dense_indexes"
 DENSE_INDEX_DISK_CACHE_KEEP_PER_DB = 3
 STAGE_LABELS = {
@@ -163,41 +172,70 @@ FOLLOW_UP_PAPER_TYPE_LABELS = {
     "analysis": "分析论文",
 }
 
-FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT = """You generate the next Chinese follow-up reply for an academic paper search system.
+FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT = """You generate the next Chinese follow-up turn for an academic paper search system.
 
-The reply will be shown to the user as a ready-to-submit suggestion.
+The system needs two aligned outputs:
+1. `clarification_question`: the question shown to the user.
+2. `follow_up_reply`: a ready-to-submit Chinese reply template that the user can click directly.
 
-Your job is to infer what the user truly wants from the full search context, not to mechanically paraphrase a fallback draft.
+Your job is to infer what the user truly wants from the full search context, not to mechanically paraphrase fallback references.
 Treat the original query and the latest user follow-up reply as the strongest signals. Use the intent snapshots, gap report,
 result signal summary, and top result mismatch summaries to decide what single follow-up would most improve retrieval focus.
 
 Requirements:
-1. Write exactly one direct Chinese follow-up reply, not a question.
-2. Preserve stable confirmed intent. If the latest user reply clearly overrides an earlier preference, follow the latest explicit preference.
-3. Strengthen only the constraints that are still missing, ambiguous, or contradicted by current results.
-4. If paper type mismatch or main-intent mismatch is the dominant problem, make that constraint explicit and hard.
+1. `clarification_question` must be a direct Chinese question in one turn, naturally asking for the most valuable missing or conflicting constraints.
+2. `follow_up_reply` must be a direct Chinese reply, not a question, and should answer the same clarification focus as `clarification_question`.
+3. Preserve stable confirmed intent. If the latest user reply clearly overrides an earlier preference, follow the latest explicit preference.
+4. Strengthen only the constraints that are still missing, ambiguous, or contradicted by current results.
+5. If paper type mismatch or main-intent mismatch is the dominant problem, make that constraint explicit and hard.
 5. If the query gap is small but evidence gap remains large, sharpen the semantic target instead of repeating generic phrases like 不限.
 6. Prefer concrete, user-facing wording such as 研究领域、研究任务、研究问题、论文类型、时间范围、模态、以及是否解释推荐理由.
-7. Keep it concise, usually one semicolon-separated sentence within 120 Chinese characters.
-8. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
-9. Use fallback_draft_reference only as a weak backup when richer context is insufficient.
-10. The rationale must be one short Chinese sentence explaining what uncertainty or mismatch this follow-up is trying to fix.
+8. Keep both fields concise, usually within 120 Chinese characters each.
+9. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
+10. Use fallback_question_reference and fallback_draft_reference only as weak backups when richer context is insufficient.
+11. `rationale` must be one short Chinese sentence explaining what uncertainty or mismatch this follow-up is trying to fix.
 
 Return JSON only."""
 
 FOLLOW_UP_SUGGESTION_SCHEMA = {
     "type": "object",
     "properties": {
+        "clarification_question": {"type": "string"},
         "follow_up_reply": {"type": "string"},
         "rationale": {"type": "string"},
     },
-    "required": ["follow_up_reply", "rationale"],
+    "required": ["clarification_question", "follow_up_reply", "rationale"],
     "additionalProperties": False,
 }
 
+FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT_V2 = """You generate the next Chinese follow-up turn for an academic paper search system.
+
+The system needs two aligned outputs:
+1. `clarification_question`: the next natural Chinese question shown to the user.
+2. `follow_up_reply`: a ready-to-submit Chinese reply template that the user can click directly.
+
+Infer the user's real target from the full retrieval context instead of paraphrasing fallback references.
+Treat the original query and latest user follow-up as the strongest signals. Use intent snapshots, gap report,
+result signal summary, and top-result mismatch summaries to choose the single follow-up that would most improve retrieval convergence.
+
+Requirements:
+1. `clarification_question` must be a direct Chinese question that asks for the most valuable missing or conflicting constraints in one turn.
+2. `follow_up_reply` must be a direct Chinese reply, not a question, and must answer the same clarification focus as `clarification_question`.
+3. Preserve stable confirmed intent. If the latest user reply clearly overrides an earlier preference, follow the latest explicit preference.
+4. Strengthen only the constraints that are still missing, ambiguous, or contradicted by current results.
+5. If paper-type mismatch or main-intent mismatch is dominant, make that constraint explicit and hard.
+6. If the query gap is small but the evidence gap remains large, sharpen the semantic target instead of repeating generic phrases like 不限.
+7. Prefer concrete, user-facing wording such as 研究领域、研究任务、研究问题、论文类型、时间范围、模态，以及是否需要解释推荐理由。
+8. Keep both fields concise, usually within 120 Chinese characters each.
+9. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
+10. Use fallback_question_reference and fallback_draft_reference only as weak backups when richer context is insufficient.
+11. `rationale` must be one short Chinese sentence explaining what uncertainty or mismatch this follow-up is trying to fix.
+
+Return JSON only."""
+
 STANDARD_QUERY_SPECS = [
     {
-        "query": "检索 RAG 综述论文",
+        "query": "我想找几篇讲 RAG 的综述论文，最好重点看怎么缓解幻觉。",
         "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
         "expected_intent_slots": {
             "search_scene": "survey_lookup",
@@ -211,7 +249,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "survey",
     },
     {
-        "query": "最近的 agent memory 论文",
+        "query": "最近两三年有哪些做 agent memory 的论文？",
         "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
         "expected_intent_slots": {
             "search_scene": "recent_progress",
@@ -224,7 +262,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "找 MALT 作者的论文",
+        "query": "我想看看 MALT 那篇论文的作者后来还发过哪些相关工作。",
         "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
         "expected_intent_slots": {
             "search_scene": "author_trace",
@@ -235,7 +273,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "author_trace",
     },
     {
-        "query": "用 COMET 做质量估计的论文",
+        "query": "有没有用 COMET 做翻译质量估计的论文？",
         "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
         "expected_intent_slots": {
             "search_scene": "method_constrained_search",
@@ -247,7 +285,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "长上下文论文进展",
+        "query": "最近长上下文方向有什么代表性论文？",
         "follow_up_reply": "时间范围 2023-2026；主题聚焦长上下文建模；论文类型不限（可包含综述）；方法约束不限；模型家族、数据集、指标不限；仅文本模态；作者不限；偏好多样结果否；需要可解释理由否。",
         "expected_intent_slots": {
             "search_scene": "recent_progress",
@@ -259,7 +297,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "大语言模型推理论文（benchmark 优先）",
+        "query": "我想找一些大模型推理方向的论文，最好 benchmark 类的优先。",
         "follow_up_reply": "时间范围 2023-2026；任务聚焦推理评测；benchmark 优先但不限；方法、模型家族、作者、标题线索不限；指标可包含 Pass@1/GSM8K/MATH；偏好多样结果否；需要可解释理由否。",
         "expected_intent_slots": {
             "research_topic.task": "reasoning",
@@ -272,7 +310,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "benchmark",
     },
     {
-        "query": "multimodal reasoning papers",
+        "query": "I'm looking for papers on multimodal reasoning.",
         "follow_up_reply": "prefer diverse results",
         "expected_intent_slots": {
             "research_topic.domain": "multimodal NLP",
@@ -282,7 +320,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+        "query": "I'm trying to find the paper titled \"Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey.\"",
         "expected_intent_slots": {
             "search_scene": "specific_paper_lookup",
         },
@@ -290,7 +328,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "specific_paper_lookup",
     },
     {
-        "query": "early exit for quality estimation",
+        "query": "I'm looking for papers on using early exit for quality estimation.",
         "expected_intent_slots": {
             "technical_constraints.method": "early exit",
             "research_topic.task": "quality estimation",
@@ -299,7 +337,7 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "translation quality estimation explainable reason",
+        "query": "I want papers on translation quality estimation that can give explainable reasons.",
         "expected_intent_slots": {
             "research_topic.task": "quality estimation",
             "result_preferences.need_explainable_reason": "yes",
@@ -522,6 +560,80 @@ def build_match_reason_fallback(matched_dimensions: Sequence[str], main_intent_s
     if main_intent_satisfied:
         return "该论文与当前查询整体一致，现有证据足以支持推荐。"
     return "该论文有一定相关性，但匹配证据仍然有限。"
+
+
+def build_query_paper_match_rule_fallback(
+    intent_frame: Dict[str, Any],
+    rank_result: Dict[str, Any],
+    evidence_pack: Dict[str, Any],
+) -> Dict[str, Any]:
+    matched_dimensions: List[str] = []
+    unmet_dimensions: List[str] = []
+    scene = clean_text(intent.get_slot(intent_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
+    exact_match_type = clean_text(rank_result.get("exact_match_type", ""))
+
+    if clamp_score(rank_result.get("scene_match", 0.0)) >= 0.6:
+        matched_dimensions.append(localize_dimension_label("scene_match"))
+    if clamp_score(rank_result.get("topic_match", 0.0)) >= 0.45:
+        matched_dimensions.append(localize_dimension_label("topic_match"))
+    if clamp_score(rank_result.get("constraint_match", 0.0)) >= 0.55:
+        matched_dimensions.append(localize_dimension_label("constraint_match"))
+    if clamp_score(rank_result.get("paper_type_match", 0.0)) >= 0.75:
+        matched_dimensions.append(localize_dimension_label("paper_type_match"))
+    if clamp_score(rank_result.get("time_preference_match", 0.0)) >= 0.75:
+        matched_dimensions.append(localize_dimension_label("time_preference_match"))
+    if clamp_score(rank_result.get("survey_preference_match", 0.0)) >= 0.75:
+        matched_dimensions.append(localize_dimension_label("survey_preference_match"))
+
+    if clamp_score(rank_result.get("constraint_match", 0.0)) < 0.35 and evidence_pack.get("constraint_conflicts"):
+        unmet_dimensions.append("技术约束未充分满足")
+    if clamp_score(rank_result.get("paper_type_match", 0.0)) < 0.5:
+        unmet_dimensions.append("论文类型未充分满足")
+    if clamp_score(rank_result.get("time_preference_match", 0.0)) < 0.5:
+        unmet_dimensions.append("时间偏好未充分满足")
+
+    rule_match_score = clamp_score(
+        0.32 * clamp_score(rank_result.get("base_score", 0.0))
+        + 0.52 * clamp_score(rank_result.get("intent_score", 0.0))
+        + 0.16 * clamp_score(rank_result.get("preliminary_score", 0.0))
+    )
+    evidence_sufficiency = clamp_score(
+        0.4 * clamp_score(rank_result.get("topic_match", 0.0))
+        + 0.2 * clamp_score(rank_result.get("scene_match", 0.0))
+        + 0.2 * clamp_score(rank_result.get("constraint_match", 0.0))
+        + 0.1 * clamp_score(rank_result.get("paper_type_match", 0.0))
+        + 0.1 * clamp_score(rank_result.get("time_preference_match", 0.0))
+    )
+    main_intent_satisfied = rule_match_score >= 0.6 and clamp_score(rank_result.get("topic_match", 0.0)) >= 0.4
+    if scene == "author_trace" and exact_match_type == "author_match":
+        main_intent_satisfied = True
+        rule_match_score = max(rule_match_score, 0.92)
+        evidence_sufficiency = max(evidence_sufficiency, 0.88)
+        if localize_dimension_label("scene_match") not in matched_dimensions:
+            matched_dimensions.append(localize_dimension_label("scene_match"))
+        if "作者线索命中" not in matched_dimensions:
+            matched_dimensions.append("作者线索命中")
+        unmet_dimensions = [item for item in unmet_dimensions if item != "主意图未满足"]
+    elif scene == "specific_paper_lookup" and exact_match_type == "title_hint":
+        main_intent_satisfied = True
+        rule_match_score = max(rule_match_score, 0.9)
+        evidence_sufficiency = max(evidence_sufficiency, 0.86)
+        if localize_dimension_label("scene_match") not in matched_dimensions:
+            matched_dimensions.append(localize_dimension_label("scene_match"))
+        if "标题线索命中" not in matched_dimensions:
+            matched_dimensions.append("标题线索命中")
+        unmet_dimensions = [item for item in unmet_dimensions if item != "主意图未满足"]
+
+    return normalize_query_paper_match_payload(
+        {
+            "main_intent_satisfied": main_intent_satisfied,
+            "matched_dimensions": matched_dimensions,
+            "unmet_dimensions": unmet_dimensions,
+            "match_score": rule_match_score,
+            "evidence_sufficiency": evidence_sufficiency,
+            "brief_reason": build_match_reason_fallback(matched_dimensions, main_intent_satisfied),
+        }
+    )
 
 
 def coerce_query_match_score(value: Any, default: float = 0.0) -> float:
@@ -928,19 +1040,30 @@ def tokenized_terms(text: str) -> List[str]:
 
 
 def dense_tokens(text: str) -> List[str]:
-    base_tokens = tokenized_terms(text)
-    bigrams = [f"{base_tokens[index]} {base_tokens[index + 1]}" for index in range(len(base_tokens) - 1)]
-    return base_tokens + bigrams
+    return tokenized_terms(text)
 
 
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
-    if OPENAI_RUNTIME_AVAILABLE is not None:
+    if OPENAI_RUNTIME_AVAILABLE is True:
         return OPENAI_RUNTIME_AVAILABLE
+    if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
+        return False
+    if not OPENAI_API_KEY:
+        OPENAI_RUNTIME_AVAILABLE = False
+        OPENAI_RUNTIME_MESSAGE = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
+        return False
     ok, message = test_openai_api(OPENAI_API_KEY)
-    OPENAI_RUNTIME_AVAILABLE = ok
     OPENAI_RUNTIME_MESSAGE = message
-    return ok
+    if ok:
+        OPENAI_RUNTIME_AVAILABLE = True
+        return True
+    if is_transient_openai_error_message(message):
+        OPENAI_RUNTIME_AVAILABLE = None
+        OPENAI_RUNTIME_MESSAGE = f"{message}；已跳过预检，正式请求时会继续重试。"
+        return True
+    OPENAI_RUNTIME_AVAILABLE = False
+    return False
 
 
 def load_error_log() -> List[Dict[str, Any]]:
@@ -981,36 +1104,17 @@ def write_prompt_file() -> None:
         dump_text(LEGACY_EXPLANATION_PROMPT_PATH, content)
 # 稠密索引缓存需要跟数据库内容绑定，避免错用旧索引。
 def dense_index_cache_key(db_path: Path) -> str:
-    resolved = db_path.resolve(strict=False)
-    try:
-        with retrieval.connect_db(resolved) as conn:
-            row = conn.execute(
-                """
-                SELECT
-                    COUNT(*) AS paper_count,
-                    MIN(paper_id) AS min_paper_id,
-                    MAX(paper_id) AS max_paper_id,
-                    SUM(LENGTH(embedding_text)) AS embedding_len_sum
-                FROM papers
-                """
-            ).fetchone()
-        signature = {
-            "db_path": str(resolved),
-            "paper_count": int(row["paper_count"] or 0),
-            "min_paper_id": clean_text(row["min_paper_id"]),
-            "max_paper_id": clean_text(row["max_paper_id"]),
-            "embedding_len_sum": int(row["embedding_len_sum"] or 0),
-            "version": DENSE_INDEX_CACHE_VERSION,
-        }
-    except Exception:
-        stat = resolved.stat()
-        signature = {
-            "db_path": str(resolved),
-            "db_size": int(stat.st_size),
-            "db_mtime_ns": int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1e9))),
-            "version": DENSE_INDEX_CACHE_VERSION,
-        }
-    digest = hashlib.sha1(json.dumps(signature, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    paper_signature = retrieval.get_paper_content_signature(db_path)
+    digest = hashlib.sha1(
+        json.dumps(
+            {
+                "paper_signature": paper_signature,
+                "version": DENSE_INDEX_CACHE_VERSION,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
     return digest[:20]
 
 
@@ -1021,9 +1125,8 @@ def dense_index_cache_dir() -> Path:
     return path
 
 
-def dense_index_cache_path(db_path: Path, cache_key: str) -> Path:
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", db_path.stem)[:48] or "papercompass"
-    return dense_index_cache_dir() / f"{safe_stem}_{cache_key}.pkl.gz"
+def dense_index_cache_path(cache_key: str) -> Path:
+    return dense_index_cache_dir() / f"dense_{DENSE_INDEX_CACHE_VERSION}_{cache_key}.pkl.gz"
 
 
 def is_valid_dense_index(index: Any) -> bool:
@@ -1071,10 +1174,9 @@ def normalize_dense_index(index: Dict[str, Any]) -> Dict[str, Any]:
     return {"postings": postings, "norms": norms, "idf": idf, "titles": titles}
 
 
-def prune_dense_index_cache_files(db_path: Path) -> None:
+def prune_dense_index_cache_files() -> None:
     cache_dir = dense_index_cache_dir()
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", db_path.stem)[:48] or "papercompass"
-    pattern = f"{safe_stem}_*.pkl.gz"
+    pattern = f"dense_{DENSE_INDEX_CACHE_VERSION}_*.pkl.gz"
     candidates = sorted(cache_dir.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)
     for path in candidates[DENSE_INDEX_DISK_CACHE_KEEP_PER_DB:]:
         try:
@@ -1084,8 +1186,8 @@ def prune_dense_index_cache_files(db_path: Path) -> None:
 
 
 # 优先从磁盘恢复稠密索引，减少重复构建时间。
-def load_dense_index_from_disk(db_path: Path, cache_key: str) -> Optional[Dict[str, Any]]:
-    cache_path = dense_index_cache_path(db_path, cache_key)
+def load_dense_index_from_disk(cache_key: str) -> Optional[Dict[str, Any]]:
+    cache_path = dense_index_cache_path(cache_key)
     if not cache_path.exists():
         return None
     try:
@@ -1117,8 +1219,8 @@ def load_dense_index_from_disk(db_path: Path, cache_key: str) -> Optional[Dict[s
 
 
 # 将稠密索引持久化到磁盘，供后续查询复用。
-def persist_dense_index_to_disk(db_path: Path, cache_key: str, index: Dict[str, Any]) -> None:
-    cache_path = dense_index_cache_path(db_path, cache_key)
+def persist_dense_index_to_disk(cache_key: str, index: Dict[str, Any]) -> None:
+    cache_path = dense_index_cache_path(cache_key)
     payload = {"version": DENSE_INDEX_CACHE_VERSION, "cache_key": cache_key, "index": index}
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Optional[Path] = None
@@ -1135,7 +1237,7 @@ def persist_dense_index_to_disk(db_path: Path, cache_key: str, index: Dict[str, 
                 pickle.dump(payload, gzip_handle, protocol=pickle.HIGHEST_PROTOCOL)
         if temp_path is not None:
             temp_path.replace(cache_path)
-        prune_dense_index_cache_files(db_path)
+        prune_dense_index_cache_files()
     except Exception as exc:
         append_error_log(
             {
@@ -1158,7 +1260,7 @@ def build_dense_index(db_path: Path) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    disk_cached = load_dense_index_from_disk(db_path, cache_key)
+    disk_cached = load_dense_index_from_disk(cache_key)
     if disk_cached is not None:
         DENSE_INDEX_CACHE[cache_key] = disk_cached
         return disk_cached
@@ -1166,7 +1268,7 @@ def build_dense_index(db_path: Path) -> Dict[str, Any]:
     with retrieval.connect_db(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT paper_id, title, embedding_text
+            SELECT paper_id, title, abstract, section_titles
             FROM papers
             ORDER BY paper_id
             """
@@ -1178,7 +1280,20 @@ def build_dense_index(db_path: Path) -> Dict[str, Any]:
     for row in rows:
         paper_id = row["paper_id"]
         titles[paper_id] = clean_text(row["title"])
-        tokens = dense_tokens(clean_text(row["embedding_text"]))
+        try:
+            section_titles = [clean_text(str(item)) for item in json.loads(row["section_titles"])]
+        except Exception:
+            section_titles = []
+        dense_source_text = "\n".join(
+            part
+            for part in (
+                clean_text(row["title"]),
+                clean_text(row["abstract"]),
+                "\n".join(section_titles[:12]),
+            )
+            if part
+        )
+        tokens = dense_tokens(dense_source_text)
         counter = Counter(tokens)
         documents[paper_id] = counter
         for token in counter.keys():
@@ -1195,13 +1310,26 @@ def build_dense_index(db_path: Path) -> Dict[str, Any]:
         norms[paper_id] = math.sqrt(sum(value * value for value in weighted.values())) or 1.0
 
     index = {"postings": postings, "norms": norms, "idf": idf, "titles": titles}
-    persist_dense_index_to_disk(db_path, cache_key, index)
+    persist_dense_index_to_disk(cache_key, index)
     DENSE_INDEX_CACHE[cache_key] = index
     if len(DENSE_INDEX_CACHE) > 4:
         oldest_key = next(iter(DENSE_INDEX_CACHE.keys()))
         if oldest_key != cache_key:
             DENSE_INDEX_CACHE.pop(oldest_key, None)
     return index
+
+
+def prepare_query_indexes(
+    db_path: Path,
+    *,
+    build_dense: bool = True,
+    build_exact: bool = True,
+) -> Dict[str, Any]:
+    payload = retrieval.ensure_query_runtime_artifacts(db_path, build_exact_cache=build_exact)
+    payload["dense_ready"] = bool(build_dense and payload.get("hot_fts_ready"))
+    payload["dense_backend"] = "hot_fts_multi_query" if build_dense else "disabled"
+    payload["exact_backend"] = "hot_fts_candidate_rescore" if build_exact else "disabled"
+    return payload
 
 
 def dense_query_vector(query: str, idf: Dict[str, float]) -> Tuple[Dict[str, float], float]:
@@ -1256,8 +1384,20 @@ def ensure_semantic_cards_for_papers(db_path: Path, paper_ids: Sequence[str]) ->
     if not target_ids:
         return {}
     with retrieval.connect_db(db_path) as conn:
-        for paper_id in target_ids:
-            semantic.generate_card_for_paper(conn, paper_id, refresh=False)
+        generation_result = semantic.generate_cards_for_paper_ids(
+            conn,
+            target_ids,
+            refresh=False,
+            allow_heuristic_fallback=False,
+        )
+        for item in generation_result.get("error_samples", []):
+            semantic.append_error_log(
+                {
+                    "paper_id": item.get("paper_id"),
+                    "mode": "ensure_semantic_cards_for_papers",
+                    "error": item.get("error", "unknown error"),
+                }
+            )
         return load_paper_rows(conn, target_ids)
 
 
@@ -1357,7 +1497,7 @@ def collect_intent_terms(intent_frame: Dict[str, Any]) -> Dict[str, List[str]]:
 def run_sparse_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_query: int = 60) -> Dict[str, Dict[str, Any]]:
     aggregated: Dict[str, Dict[str, Any]] = {}
     for query in intent_frame.get("coarse_queries", []):
-        for result in retrieval.search_basic(query, top_k=top_k_per_query, db_path=db_path):
+        for result in retrieval.search_basic_fast(query, top_k=top_k_per_query, db_path=db_path):
             existing = aggregated.get(result["paper_id"])
             score = float(result.get("fts_score") or 0.0)
             if existing is None or score > existing["raw_score"]:
@@ -1410,45 +1550,24 @@ def run_dense_retrieval(intent_frame: Dict[str, Any], db_path: Path, top_k_per_q
     if not queries:
         return {}
 
-    index = build_dense_index(db_path)
     aggregated: Dict[str, Dict[str, Any]] = {}
-    postings = index["postings"]
-    norms = index["norms"]
-    idf = index["idf"]
-    titles = index["titles"]
-
     for query in queries:
-        query_vector, query_norm = dense_query_vector(query, idf)
-        dot_scores: Dict[str, float] = defaultdict(float)
-        for token, query_weight in query_vector.items():
-            for paper_id, doc_weight in postings.get(token, []):
-                dot_scores[paper_id] += query_weight * doc_weight
-        if not dot_scores:
-            continue
-
-        scored: List[Tuple[str, float]] = []
-        for paper_id, dot_value in dot_scores.items():
-            denominator = query_norm * norms.get(paper_id, 1.0)
-            if denominator <= 0:
-                continue
-            score = dot_value / denominator
-            if score > 0:
-                scored.append((paper_id, score))
-        scored.sort(key=lambda item: item[1], reverse=True)
-
-        for paper_id, score in scored[:top_k_per_query]:
+        for result in retrieval.search_dense_fast(query, top_k=top_k_per_query, db_path=db_path):
+            paper_id = result["paper_id"]
+            score = float(result.get("dense_raw_score") or 0.0)
             existing = aggregated.get(paper_id)
             if existing is None or score > existing["raw_score"]:
                 aggregated[paper_id] = {
                     "paper_id": paper_id,
                     "raw_score": score,
                     "source_query": query,
+                    "matched_terms": clean_string_list(result.get("matched_terms", []), limit=4),
+                    "title": result.get("title", ""),
                 }
 
     normalized_scores = normalize_score_map({paper_id: item["raw_score"] for paper_id, item in aggregated.items()})
     for paper_id, score in normalized_scores.items():
         aggregated[paper_id]["dense_score"] = score
-        aggregated[paper_id]["title"] = titles.get(paper_id, "")
     return aggregated
 
 
@@ -2396,6 +2515,180 @@ def build_follow_up_suggestion(
 
 
 # 结合规则得分和 LLM 匹配结果做最终重排。
+# Override the earlier helpers so follow-up generation is explicitly LLM-led
+# and exposes both the question shown to the user and a ready-to-submit reply.
+def build_follow_up_suggestion_messages(
+    query: str,
+    follow_up_reply: Optional[str],
+    initial_intent_frame: Dict[str, Any],
+    final_intent_frame: Dict[str, Any],
+    gap_report: Dict[str, Any],
+    ranked_results: Sequence[Dict[str, Any]],
+    fallback_question: str,
+    fallback_draft: str,
+) -> List[Dict[str, str]]:
+    payload = {
+        "search_round": "after_follow_up" if clean_text(follow_up_reply) else "initial_search",
+        "original_query": clean_text(query),
+        "latest_user_follow_up_reply": clean_text(follow_up_reply),
+        "initial_intent_snapshot": build_follow_up_intent_snapshot(initial_intent_frame),
+        "current_intent_snapshot": build_follow_up_intent_snapshot(final_intent_frame),
+        "intent_change_after_follow_up": build_follow_up_intent_delta(initial_intent_frame, final_intent_frame),
+        "gap_report": gap_report,
+        "result_signal_summary": build_follow_up_result_signal_summary(ranked_results),
+        "top_results": build_follow_up_suggestion_context(ranked_results),
+        "fallback_question_reference": fallback_question,
+        "fallback_draft_reference": fallback_draft,
+    }
+    return [
+        {"role": "system", "content": FOLLOW_UP_SUGGESTION_SYSTEM_PROMPT_V2},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=2)},
+    ]
+
+
+def build_follow_up_question_fallback(
+    initial_intent_frame: Dict[str, Any],
+    final_intent_frame: Dict[str, Any],
+) -> str:
+    question = clean_text(final_intent_frame.get("clarification_question", ""))
+    if not question:
+        question = clean_text(initial_intent_frame.get("clarification_question", ""))
+    if question and question[-1] not in "。！？?":
+        question += "？"
+    return question
+
+
+def normalize_follow_up_turn_payload(
+    raw_payload: Dict[str, Any],
+    fallback_question: str,
+    fallback_draft: str,
+) -> Tuple[str, str, str, bool]:
+    question = clean_text(raw_payload.get("clarification_question", ""))
+    draft = clean_text(raw_payload.get("follow_up_reply", ""))
+    rationale = clean_text(raw_payload.get("rationale", ""))
+    used_fallback = False
+    if not question or not contains_chinese(question):
+        question = fallback_question
+        used_fallback = used_fallback or bool(question)
+    if question and question[-1] not in "。！？?":
+        question += "？"
+    if not draft or not contains_chinese(draft):
+        draft = fallback_draft
+        used_fallback = used_fallback or bool(draft)
+    if draft and draft[-1] not in "。！？?":
+        draft += "。"
+    if not rationale or not contains_chinese(rationale):
+        rationale = "这条追问聚焦当前最影响结果收敛的缺口。"
+    return question, draft, rationale, used_fallback
+
+
+def build_follow_up_suggestion(
+    query: str,
+    follow_up_reply: Optional[str],
+    initial_intent_frame: Dict[str, Any],
+    final_intent_frame: Dict[str, Any],
+    gap_report: Dict[str, Any],
+    ranked_results: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    fallback_question = build_follow_up_question_fallback(initial_intent_frame, final_intent_frame)
+    fallback_draft = build_follow_up_draft_fallback(final_intent_frame, gap_report)
+    if not fallback_question and not fallback_draft and not ranked_results:
+        return {
+            "question": "",
+            "draft": "",
+            "rationale": "",
+            "generator": "none",
+            "used_model": None,
+            "used_fallback": False,
+        }
+
+    if not can_use_openai():
+        if not fallback_question and not fallback_draft:
+            return {
+                "question": "",
+                "draft": "",
+                "rationale": "",
+                "generator": "none",
+                "used_model": None,
+                "used_fallback": False,
+            }
+        return {
+            "question": fallback_question,
+            "draft": fallback_draft,
+            "rationale": "LLM 当前不可用，已退回到兜底追问文案。",
+            "generator": "rule",
+            "used_model": None,
+            "used_fallback": True,
+        }
+
+    try:
+        raw_payload, used_model = structured_chat_completion(
+            messages=build_follow_up_suggestion_messages(
+                query,
+                follow_up_reply,
+                initial_intent_frame,
+                final_intent_frame,
+                gap_report,
+                ranked_results,
+                fallback_question,
+                fallback_draft,
+            ),
+            schema_name="follow_up_suggestion",
+            schema=FOLLOW_UP_SUGGESTION_SCHEMA,
+            model=OPENAI_MODEL,
+            temperature=0.1,
+            max_tokens=420,
+            timeout=90,
+            api_key=OPENAI_API_KEY,
+        )
+        question, draft, rationale, used_fallback = normalize_follow_up_turn_payload(
+            raw_payload,
+            fallback_question,
+            fallback_draft,
+        )
+        if not question and not draft:
+            return {
+                "question": "",
+                "draft": "",
+                "rationale": "",
+                "generator": "none",
+                "used_model": None,
+                "used_fallback": used_fallback,
+            }
+        return {
+            "question": question,
+            "draft": draft,
+            "rationale": rationale,
+            "generator": "llm",
+            "used_model": used_model,
+            "used_fallback": used_fallback,
+        }
+    except Exception as exc:
+        append_error_log(
+            {
+                "stage": "follow_up_suggestion",
+                "error": str(exc),
+            }
+        )
+        if not fallback_question and not fallback_draft:
+            return {
+                "question": "",
+                "draft": "",
+                "rationale": "",
+                "generator": "none",
+                "used_model": None,
+                "used_fallback": False,
+            }
+        return {
+            "question": fallback_question,
+            "draft": fallback_draft,
+            "rationale": "LLM 追问生成失败，已退回到兜底追问文案。",
+            "generator": "rule",
+            "used_model": None,
+            "used_fallback": True,
+        }
+
+
 def rerank_candidates(
     db_path: Path,
     intent_frame: Dict[str, Any],
@@ -2500,7 +2793,7 @@ def rerank_candidates(
         for item in shortlisted
         if not evidence_packs[item["paper_id"]].get("semantic_card")
     ]
-    if llm_explain_enabled and missing_semantic_card_ids:
+    if llm_explain_enabled and missing_semantic_card_ids and 0 < INLINE_SEMANTIC_BACKFILL_MAX_PAPERS >= len(missing_semantic_card_ids):
         if stage_callback:
             stage_callback(
                 {
@@ -2575,6 +2868,16 @@ def rerank_candidates(
                     "paper_count": len(missing_semantic_card_ids),
                 }
             )
+    elif llm_explain_enabled and missing_semantic_card_ids and stage_callback:
+        stage_callback(
+            {
+                "stage": "semantic_card_backfill",
+                "status": "completed",
+                "label": STAGE_LABELS["semantic_card_backfill"],
+                "paper_count": len(missing_semantic_card_ids),
+                "skipped": True,
+            }
+        )
 
     shortlisted.sort(
         key=lambda item: (-item["paper_type_priority"], -item["preliminary_score"], -item["intent_score"], -item["base_score"], item["title"])
@@ -2605,6 +2908,7 @@ def rerank_candidates(
                     "paper_count": len(shortlisted),
                     "cached_count": len(match_results),
                     "llm_count": len(pending_items),
+                    "rule_count": 0,
                 }
             )
 
@@ -2697,7 +3001,15 @@ def rerank_candidates(
                     "label": STAGE_LABELS["query_paper_match"],
                     "paper_count": len(shortlisted),
                     "cached_count": len([item for item in shortlisted if item["paper_id"] in match_results and match_results[item["paper_id"]].get("parser_name") == "llm_query_paper_match_cache"]),
-                    "llm_count": len([item for item in shortlisted if item["paper_id"] in match_results and match_results[item["paper_id"]].get("parser_name") != "llm_query_paper_match_cache"]),
+                    "llm_count": len(
+                        [
+                            item
+                            for item in shortlisted
+                            if item["paper_id"] in match_results
+                            and match_results[item["paper_id"]].get("parser_name") != "llm_query_paper_match_cache"
+                        ]
+                    ),
+                    "rule_count": 0,
                     "used_model": ", ".join(query_match_models),
                 }
             )
@@ -3340,11 +3652,26 @@ def run_core_chain(
     stage_timings["gap_report"] = time.perf_counter() - stage_start
     emit_stage("gap_report", "completed", duration=round(stage_timings["gap_report"], 4))
 
-    follow_up_suggestion = {"draft": "", "rationale": "", "generator": "none", "used_model": None}
+    follow_up_suggestion = {
+        "question": "",
+        "draft": "",
+        "rationale": "",
+        "generator": "none",
+        "used_model": None,
+        "used_fallback": False,
+    }
+    scene = clean_text(intent.get_slot(final_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
+    skip_follow_up_for_specific_lookup = (
+        scene in {"author_trace", "specific_paper_lookup"}
+        and any(clean_text(item.get("exact_match_type", "")) in {"author_match", "title_hint"} for item in ranked_results)
+    )
     if (
-        gap_report.get("query_gap")
-        or gap_report.get("evidence_gap")
-        or final_frame.get("clarification_needed")
+        not skip_follow_up_for_specific_lookup
+        and (
+            gap_report.get("query_gap")
+            or gap_report.get("evidence_gap")
+            or final_frame.get("clarification_needed")
+        )
     ):
         emit_stage("follow_up_suggestion", "running")
         stage_start = time.perf_counter()

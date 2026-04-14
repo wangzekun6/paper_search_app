@@ -1,6 +1,6 @@
 [
   {
-    "query": "检索 RAG 综述论文",
+    "query": "我想找几篇讲 RAG 的综述论文，最好重点看怎么缓解幻觉。",
     "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
     "expected_intent_slots": {
       "search_scene": "survey_lookup",
@@ -14,7 +14,7 @@
     "expected_top_result_type": "survey"
   },
   {
-    "query": "最近的 agent memory 论文",
+    "query": "最近两三年有哪些做 agent memory 的论文？",
     "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
     "expected_intent_slots": {
       "search_scene": "recent_progress",
@@ -27,7 +27,7 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "找 MALT 作者的论文",
+    "query": "我想看看 MALT 那篇论文的作者后来还发过哪些相关工作。",
     "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
     "expected_intent_slots": {
       "search_scene": "author_trace",
@@ -38,7 +38,7 @@
     "expected_top_result_type": "author_trace"
   },
   {
-    "query": "用 COMET 做质量估计的论文",
+    "query": "有没有用 COMET 做翻译质量估计的论文？",
     "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
     "expected_intent_slots": {
       "search_scene": "method_constrained_search",
@@ -50,7 +50,7 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "长上下文论文进展",
+    "query": "最近长上下文方向有什么代表性论文？",
     "follow_up_reply": "时间范围 2023-2026；主题聚焦长上下文建模；论文类型不限（可包含综述）；方法约束不限；模型家族、数据集、指标不限；仅文本模态；作者不限；偏好多样结果否；需要可解释理由否。",
     "expected_intent_slots": {
       "search_scene": "recent_progress",
@@ -62,7 +62,7 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "大语言模型推理论文（benchmark 优先）",
+    "query": "我想找一些大模型推理方向的论文，最好 benchmark 类的优先。",
     "follow_up_reply": "时间范围 2023-2026；任务聚焦推理评测；benchmark 优先但不限；方法、模型家族、作者、标题线索不限；指标可包含 Pass@1/GSM8K/MATH；偏好多样结果否；需要可解释理由否。",
     "expected_intent_slots": {
       "research_topic.task": "reasoning",
@@ -75,7 +75,7 @@
     "expected_top_result_type": "benchmark"
   },
   {
-    "query": "multimodal reasoning papers",
+    "query": "I'm looking for papers on multimodal reasoning.",
     "follow_up_reply": "prefer diverse results",
     "expected_intent_slots": {
       "research_topic.domain": "multimodal NLP",
@@ -87,7 +87,7 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+    "query": "I'm trying to find the paper titled \"Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey.\"",
     "expected_intent_slots": {
       "search_scene": "specific_paper_lookup"
     },
@@ -95,7 +95,7 @@
     "expected_top_result_type": "specific_paper_lookup"
   },
   {
-    "query": "early exit for quality estimation",
+    "query": "I'm looking for papers on using early exit for quality estimation.",
     "expected_intent_slots": {
       "technical_constraints.method": "early exit",
       "research_topic.task": "quality estimation"
@@ -106,7 +106,7 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "translation quality estimation explainable reason",
+    "query": "I want papers on translation quality estimation that can give explainable reasons.",
     "expected_intent_slots": {
       "research_topic.task": "quality estimation",
       "result_preferences.need_explainable_reason": "yes"

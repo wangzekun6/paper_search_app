@@ -12,12 +12,19 @@ PaperCompass 全量入库与检索流水线。
 from __future__ import annotations
 
 import argparse
+import gzip
+import hashlib
+import io
 import json
+import pickle
 import re
 import sqlite3
+import tarfile
+import tempfile
 from collections import defaultdict
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from itertools import combinations
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .models import PaperIndexRecord, PaperSectionRecord, RawPaperRecord
 from .ingest import (
@@ -42,7 +49,9 @@ from .config import (
     SYSTEM_DB_PATH,
     SYSTEM_OUTPUT_DIR,
     ensure_system_layout,
+    get_default_dataset_source,
     get_active_runtime_db_path,
+    is_supported_dataset_archive,
     resolve_dataset_root,
 )
 
@@ -52,8 +61,22 @@ DEFAULT_DB_PATH = get_active_runtime_db_path()
 DEFAULT_QUERY_JSON_PATH = SMOKE_QUERY_JSON_PATH
 DEFAULT_QUERY_TEXT_PATH = SMOKE_QUERY_TEXT_PATH
 DEFAULT_FEEDBACK_PATH = BUILD_FEEDBACK_PATH
+DEFAULT_BUILD_BATCH_SIZE = 1000
+DEFAULT_BUILD_MMAP_SIZE = 1073741824
+SQLITE_VARIABLE_CHUNK_SIZE = 900
 SECTION_SNIPPET_LIMIT = 320
 FTS_FIELDS = ("title", "abstract", "section_titles", "section_snippet")
+HOT_FTS_FIELDS = ("title", "authors", "abstract", "section_titles")
+RUNTIME_METADATA_TABLE = "runtime_metadata"
+PAPER_CONTENT_SIGNATURE_KEY = "paper_content_signature_v1"
+HOT_FTS_TABLE = "paper_search_fts_hot_v2"
+HOT_FTS_SIGNATURE_KEY = "paper_search_fts_hot_signature_v2"
+HOT_FTS_VOCAB_TABLE = "paper_search_fts_hot_v2_vocab"
+BUILD_SOURCE_FINGERPRINT_KEY = "build_source_fingerprint_v1"
+BUILD_DESCRIPTOR_KEY = "build_descriptor_v1"
+BUILD_DESCRIPTOR_VERSION = "build_layout_v2"
+EXACT_INDEX_CACHE_VERSION = "exact_index_v1"
+EXACT_INDEX_DISK_CACHE_SUBDIR = "exact_indexes"
 FIELD_LABELS = {
     "title": "标题",
     "authors": "作者",
@@ -121,7 +144,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command")
 
     build_parser = subparsers.add_parser("build", help="构建完整 SQLite 数据库并生成调试查询日志。")
-    build_parser.add_argument("--data-root", type=Path, default=DATASET_DIR)
+    build_parser.add_argument("--data-root", type=Path, default=get_default_dataset_source())
     build_parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
     build_parser.add_argument("--query-json-path", type=Path, default=DEFAULT_QUERY_JSON_PATH)
     build_parser.add_argument("--query-text-path", type=Path, default=DEFAULT_QUERY_TEXT_PATH)
@@ -176,7 +199,70 @@ def normalize_source_path(source_path: str | Path) -> str:
 
 
 def source_path_for(data_root: Path, path: Path) -> str:
-    return f"{data_root.name}/{path.name}"
+    root_name = data_root.name
+    try:
+        relative = path.resolve(strict=False).relative_to(data_root.resolve(strict=False))
+    except ValueError:
+        relative = Path(path.name)
+    return f"{root_name}/{relative.as_posix()}"
+
+
+def archive_root_name(archive_path: Path) -> str:
+    name = archive_path.name
+    lowered = name.lower()
+    for suffix in (".tar.gz", ".tgz", ".tar"):
+        if lowered.endswith(suffix):
+            return name[: -len(suffix)]
+    return archive_path.stem
+
+
+def archive_source_path_for(archive_path: Path, member_name: str) -> str:
+    root_name = archive_root_name(archive_path)
+    parts = [part for part in PurePosixPath(member_name).parts if part not in ("", ".", "/")]
+    if root_name in parts:
+        relative_parts = parts[parts.index(root_name) :]
+    elif len(parts) >= 2 and re.fullmatch(r"\d{4}", parts[-2]):
+        relative_parts = [root_name, parts[-2], parts[-1]]
+    else:
+        relative_parts = [root_name, parts[-1] if parts else member_name]
+    return "/".join(relative_parts)
+
+
+def iter_directory_json_records(data_root: Path) -> Iterator[Tuple[str, str, Dict[str, Any]]]:
+    for path in sorted(candidate for candidate in data_root.rglob("*.json") if candidate.is_file()):
+        raw_json = load_raw_json(path)
+        source_path = source_path_for(data_root, path)
+        yield path.stem, source_path, raw_json
+
+
+def iter_archive_json_records(archive_path: Path) -> Iterator[Tuple[str, str, Dict[str, Any]]]:
+    with tarfile.open(archive_path, "r:*") as archive:
+        for member in archive:
+            if not member.isfile() or not member.name.lower().endswith(".json"):
+                continue
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                continue
+            source_path = archive_source_path_for(archive_path, member.name)
+            paper_id = paper_id_from_source_path(source_path)
+            try:
+                with io.TextIOWrapper(extracted, encoding="utf-8") as handle:
+                    raw_json = json.load(handle)
+            except Exception as exc:
+                raise ValueError(f"Failed to parse JSON from archive member: {member.name}") from exc
+            yield paper_id, source_path, raw_json
+
+
+def iter_dataset_json_records(data_source: Path) -> Iterator[Tuple[str, str, Dict[str, Any]]]:
+    if data_source.is_dir():
+        yield from iter_directory_json_records(data_source)
+        return
+    if is_supported_dataset_archive(data_source):
+        yield from iter_archive_json_records(data_source)
+        return
+    raise ValueError(
+        f"Unsupported dataset source: {data_source}. Only directories and .tar/.tar.gz/.tgz archives are supported."
+    )
 
 
 def paper_id_from_source_path(source_path: str | Path) -> str:
@@ -241,16 +327,21 @@ def extract_sections(raw_json: Dict[str, Any], paper_id: str = "") -> List[Paper
 
 
 # 把单篇原始论文解析成可直接入库的论文级索引记录。
-def parse_paper_json(raw_json: Dict[str, Any], source_path: str | Path) -> PaperIndexRecord:
+def parse_paper_json(
+    raw_json: Dict[str, Any],
+    source_path: str | Path,
+    *,
+    section_records: Optional[Sequence[PaperSectionRecord]] = None,
+) -> PaperIndexRecord:
     source_path_text = normalize_source_path(source_path)
     paper_id = paper_id_from_source_path(source_path_text)
-    section_records = extract_sections(raw_json, paper_id)
+    resolved_section_records = list(section_records) if section_records is not None else extract_sections(raw_json, paper_id)
     typed_paragraphs: Dict[str, List[str]] = defaultdict(list)
     section_titles: List[str] = []
 
     # 在全量入库时就提前拆出 intro/methods/results/discussion，
     # 这样语义卡片模块可以直接复用这些字段构造固定长度的 LLM 输入窗口。
-    for section_record in section_records:
+    for section_record in resolved_section_records:
         section_titles.append(section_record.section_title)
         paragraphs = [part for part in section_record.section_text.split("\n\n") if part]
         if section_record.section_type in {"intro", "methods", "results", "discussion"}:
@@ -274,7 +365,7 @@ def parse_paper_json(raw_json: Dict[str, Any], source_path: str | Path) -> Paper
         results_text=join_blocks(typed_paragraphs["results"]),
         discussion_text=join_blocks(typed_paragraphs["discussion"]),
         appendix_titles=flatten_appendix_titles(raw_json.get("appendices", {})),
-        fulltext_for_sparse=build_fulltext_for_sparse(title, abstract, section_records),
+        fulltext_for_sparse=build_fulltext_for_sparse(title, abstract, resolved_section_records),
         embedding_text=build_embedding_text(title, abstract, typed_paragraphs),
     )
 
@@ -285,12 +376,235 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
     return conn
+
+
+def apply_build_pragmas(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode = MEMORY;")
+    conn.execute("PRAGMA synchronous = OFF;")
+    conn.execute("PRAGMA locking_mode = EXCLUSIVE;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    conn.execute("PRAGMA cache_size = -262144;")
+    conn.execute("PRAGMA cache_spill = OFF;")
+    conn.execute(f"PRAGMA mmap_size = {DEFAULT_BUILD_MMAP_SIZE};")
+
+
+def ensure_runtime_metadata_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {RUNTIME_METADATA_TABLE} (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+
+
+def get_runtime_metadata(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    ensure_runtime_metadata_table(conn)
+    row = conn.execute(
+        f"SELECT value FROM {RUNTIME_METADATA_TABLE} WHERE key = ?",
+        (key,),
+    ).fetchone()
+    return str(row["value"]) if row and row["value"] is not None else default
+
+
+def set_runtime_metadata(conn: sqlite3.Connection, key: str, value: str) -> None:
+    ensure_runtime_metadata_table(conn)
+    conn.execute(
+        f"""
+        INSERT INTO {RUNTIME_METADATA_TABLE} (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
+
+
+def build_descriptor(*, store_raw_json: bool = False) -> Dict[str, Any]:
+    return {
+        "version": BUILD_DESCRIPTOR_VERSION,
+        "store_raw_json": bool(store_raw_json),
+    }
+
+
+def write_build_runtime_metadata(
+    conn: sqlite3.Connection,
+    *,
+    source_fingerprint: Dict[str, Any],
+    store_raw_json: bool = False,
+) -> None:
+    set_runtime_metadata(
+        conn,
+        BUILD_SOURCE_FINGERPRINT_KEY,
+        json.dumps(source_fingerprint, ensure_ascii=False, sort_keys=True),
+    )
+    set_runtime_metadata(
+        conn,
+        BUILD_DESCRIPTOR_KEY,
+        json.dumps(build_descriptor(store_raw_json=store_raw_json), ensure_ascii=False, sort_keys=True),
+    )
+
+
+def load_build_runtime_metadata(db_path: str | Path | None = None) -> Dict[str, Any]:
+    database_path = resolve_db_path(db_path)
+    if not database_path.exists():
+        return {}
+    try:
+        with connect_db(database_path) as conn:
+            source_payload = get_runtime_metadata(conn, BUILD_SOURCE_FINGERPRINT_KEY, "")
+            descriptor_payload = get_runtime_metadata(conn, BUILD_DESCRIPTOR_KEY, "")
+            paper_count = int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] or 0)
+    except Exception:
+        return {}
+    if not source_payload or paper_count <= 0:
+        return {}
+    try:
+        source_fingerprint = json.loads(source_payload)
+    except Exception:
+        return {}
+    try:
+        descriptor = json.loads(descriptor_payload) if descriptor_payload else {}
+    except Exception:
+        descriptor = {}
+    return {
+        "db_path": str(database_path),
+        "paper_count": paper_count,
+        "source_fingerprint": source_fingerprint,
+        "build_descriptor": descriptor,
+    }
+
+
+def database_matches_build(
+    db_path: str | Path | None,
+    *,
+    source_fingerprint: Dict[str, Any],
+    store_raw_json: bool = False,
+) -> bool:
+    metadata = load_build_runtime_metadata(db_path)
+    if not metadata:
+        return False
+    if metadata.get("source_fingerprint") != source_fingerprint:
+        return False
+    existing_descriptor = metadata.get("build_descriptor") or {}
+    existing_version = clean_text(existing_descriptor.get("version"))
+    if existing_version and existing_version != BUILD_DESCRIPTOR_VERSION:
+        return False
+    existing_store_raw_json = bool(existing_descriptor.get("store_raw_json"))
+    if store_raw_json and not existing_store_raw_json:
+        return False
+    return True
+
+
+def compute_paper_content_signature(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS paper_count,
+            MIN(paper_id) AS min_paper_id,
+            MAX(paper_id) AS max_paper_id,
+            SUM(LENGTH(fulltext_for_sparse)) AS sparse_len_sum,
+            SUM(LENGTH(embedding_text)) AS embedding_len_sum
+        FROM papers
+        """
+    ).fetchone()
+    payload = {
+        "paper_count": int(row["paper_count"] or 0),
+        "min_paper_id": clean_text(row["min_paper_id"]),
+        "max_paper_id": clean_text(row["max_paper_id"]),
+        "sparse_len_sum": int(row["sparse_len_sum"] or 0),
+        "embedding_len_sum": int(row["embedding_len_sum"] or 0),
+    }
+    return hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+
+
+def get_paper_content_signature(
+    db_path: str | Path | None = None,
+    *,
+    conn: Optional[sqlite3.Connection] = None,
+) -> str:
+    if conn is not None:
+        cached = get_runtime_metadata(conn, PAPER_CONTENT_SIGNATURE_KEY, "")
+        if cached:
+            return cached
+        signature = compute_paper_content_signature(conn)
+        set_runtime_metadata(conn, PAPER_CONTENT_SIGNATURE_KEY, signature)
+        conn.commit()
+        return signature
+
+    database_path = resolve_db_path(db_path)
+    with connect_db(database_path) as local_conn:
+        return get_paper_content_signature(conn=local_conn)
+
+
+def exact_index_cache_dir() -> Path:
+    ensure_system_layout()
+    path = SYSTEM_OUTPUT_DIR / "cache" / EXACT_INDEX_DISK_CACHE_SUBDIR
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def exact_index_cache_path(signature: str) -> Path:
+    safe_signature = re.sub(r"[^A-Za-z0-9._-]+", "_", signature)[:48] or "missing"
+    return exact_index_cache_dir() / f"exact_{EXACT_INDEX_CACHE_VERSION}_{safe_signature}.pkl.gz"
+
+
+def load_exact_index_from_disk(signature: str) -> Optional[Dict[str, Any]]:
+    cache_path = exact_index_cache_path(signature)
+    if not cache_path.exists():
+        return None
+    try:
+        with gzip.open(cache_path, "rb") as handle:
+            payload = pickle.load(handle)
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("version") != EXACT_INDEX_CACHE_VERSION:
+            return None
+        if payload.get("signature") != signature:
+            return None
+        index = payload.get("index")
+        if not isinstance(index, dict) or not isinstance(index.get("papers"), list):
+            return None
+        return index
+    except Exception:
+        try:
+            cache_path.unlink()
+        except OSError:
+            pass
+        return None
+
+
+def persist_exact_index_to_disk(signature: str, index: Dict[str, Any]) -> None:
+    cache_path = exact_index_cache_path(signature)
+    payload = {"version": EXACT_INDEX_CACHE_VERSION, "signature": signature, "index": index}
+    temp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f"{cache_path.stem}.",
+            suffix=".tmp",
+            dir=cache_path.parent,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            with gzip.GzipFile(fileobj=handle, mode="wb", compresslevel=3) as gzip_handle:
+                pickle.dump(payload, gzip_handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if temp_path is not None:
+            temp_path.replace(cache_path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 # 初始化空数据库并确保基础 schema 完整。
 def initialize_database(db_path: Path) -> sqlite3.Connection:
     conn = connect_db(db_path)
+    apply_build_pragmas(conn)
     reset_database_schema(conn)
     return conn
 
@@ -352,12 +666,21 @@ def restore_runtime_tables(conn: sqlite3.Connection, backup_payload: Dict[str, L
 
     saved_papers = backup_payload.get("saved_papers", [])
     if saved_papers:
+        # Skip stale saved papers missing from the rebuilt corpus to avoid FK errors.
+        existing_paper_ids = {
+            row["paper_id"]
+            for row in conn.execute("SELECT paper_id FROM papers")
+        }
         conn.executemany(
             """
             INSERT OR IGNORE INTO saved_papers (paper_id, saved_at)
             VALUES (?, ?)
             """,
-            [(item["paper_id"], item["saved_at"]) for item in saved_papers],
+            [
+                (item["paper_id"], item["saved_at"])
+                for item in saved_papers
+                if item["paper_id"] in existing_paper_ids
+            ],
         )
     conn.commit()
 
@@ -393,6 +716,44 @@ def insert_paper(conn: sqlite3.Connection, index_record: PaperIndexRecord) -> No
     )
 
 
+def insert_raw_papers(conn: sqlite3.Connection, raw_records: Sequence[RawPaperRecord]) -> None:
+    if not raw_records:
+        return
+    conn.executemany(
+        """
+        INSERT INTO raw_papers (paper_id, source_path, raw_json)
+        VALUES (?, ?, ?)
+        """,
+        [
+            (
+                record.paper_id,
+                record.source_path,
+                json.dumps(record.raw_json, ensure_ascii=False),
+            )
+            for record in raw_records
+        ],
+    )
+
+
+def insert_papers(conn: sqlite3.Connection, index_records: Sequence[PaperIndexRecord]) -> None:
+    if not index_records:
+        return
+    conn.executemany(
+        """
+        INSERT INTO papers (
+            paper_id, source_path, year_month, title, authors_raw, normalized_authors,
+            abstract, section_titles, intro_text, methods_text, results_text,
+            discussion_text, appendix_titles, fulltext_for_sparse, embedding_text
+        ) VALUES (
+            :paper_id, :source_path, :year_month, :title, :authors_raw, :normalized_authors,
+            :abstract, :section_titles, :intro_text, :methods_text, :results_text,
+            :discussion_text, :appendix_titles, :fulltext_for_sparse, :embedding_text
+        )
+        """,
+        [record.to_storage_row() for record in index_records],
+    )
+
+
 def insert_sections(conn: sqlite3.Connection, section_records: Sequence[PaperSectionRecord]) -> None:
     if not section_records:
         return
@@ -420,52 +781,250 @@ def insert_sections(conn: sqlite3.Connection, section_records: Sequence[PaperSec
 # 把论文标题、摘要和章节片段写入 FTS 表，供全文检索使用。
 def build_fts_index(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM paper_search_fts")
+    conn.execute(
+        """
+        INSERT INTO paper_search_fts (paper_id, title, abstract, section_titles, section_snippet)
+        SELECT
+            papers.paper_id,
+            papers.title,
+            papers.abstract,
+            COALESCE(papers.section_titles, ''),
+            COALESCE(section_snippets.section_snippet, '')
+        FROM papers
+        LEFT JOIN (
+            SELECT
+                paper_id,
+                GROUP_CONCAT(section_snippet, '\n') AS section_snippet
+            FROM paper_sections
+            GROUP BY paper_id
+        ) AS section_snippets
+            ON section_snippets.paper_id = papers.paper_id
+        ORDER BY papers.paper_id
+        """
+    )
+    conn.commit()
 
-    # FTS 表里额外存一份按 paper 聚合的 section_snippet，
-    # 这样检索命中后可以直接返回证据片段，而不用再次回原始 JSON 扫描全文。
-    section_snippets_by_paper: Dict[str, List[str]] = defaultdict(list)
-    for row in conn.execute(
-        """
-        SELECT paper_id, section_snippet
-        FROM paper_sections
-        ORDER BY paper_id, section_order
-        """
-    ):
-        section_snippets_by_paper[row["paper_id"]].append(clean_text(row["section_snippet"]))
 
-    fts_rows = []
-    for row in conn.execute(
+def ensure_hot_fts_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
         """
-        SELECT paper_id, title, abstract, section_titles
+        CREATE VIRTUAL TABLE IF NOT EXISTS paper_search_fts_hot_v2 USING fts5(
+            paper_id UNINDEXED,
+            title,
+            authors,
+            abstract,
+            section_titles
+        )
+        """
+    )
+
+
+def ensure_hot_fts_vocab_table(conn: sqlite3.Connection) -> None:
+    ensure_hot_fts_table(conn)
+    conn.execute(
+        f"""
+        CREATE VIRTUAL TABLE IF NOT EXISTS {HOT_FTS_VOCAB_TABLE}
+        USING fts5vocab({HOT_FTS_TABLE}, 'row')
+        """
+    )
+
+
+def lookup_hot_fts_doc_counts(conn: sqlite3.Connection, tokens: Sequence[str]) -> Dict[str, int]:
+    clean_tokens: List[str] = []
+    seen = set()
+    for token in tokens:
+        text = clean_text(str(token))
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        clean_tokens.append(text)
+    if not clean_tokens:
+        return {}
+    ensure_hot_fts_vocab_table(conn)
+    counts: Dict[str, int] = {}
+    for start in range(0, len(clean_tokens), SQLITE_VARIABLE_CHUNK_SIZE):
+        chunk = clean_tokens[start : start + SQLITE_VARIABLE_CHUNK_SIZE]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"SELECT term, doc FROM {HOT_FTS_VOCAB_TABLE} WHERE term IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        for row in rows:
+            counts[str(row["term"])] = int(row["doc"] or 0)
+    return counts
+
+
+def select_informative_hot_fts_terms(
+    conn: sqlite3.Connection,
+    query: str,
+    *,
+    max_terms: int = 4,
+) -> List[str]:
+    tokens = tokenize_query(query)
+    if not tokens:
+        return []
+    doc_counts = lookup_hot_fts_doc_counts(conn, tokens)
+    present_terms = [token for token in tokens if doc_counts.get(token, 0) > 0]
+    candidate_terms = present_terms or tokens
+    ranked = sorted(
+        candidate_terms,
+        key=lambda token: (
+            doc_counts.get(token, 10**9),
+            -len(token),
+            token,
+        ),
+    )
+    return ranked[: max_terms or len(ranked)]
+
+
+def build_hot_fts_match_query(
+    conn: sqlite3.Connection,
+    query: str,
+    *,
+    max_terms: int = 4,
+) -> Tuple[str, List[str]]:
+    selected_terms = select_informative_hot_fts_terms(conn, query, max_terms=max_terms)
+    if not selected_terms:
+        return "", []
+    if len(selected_terms) == 1:
+        return selected_terms[0], selected_terms
+    return " AND ".join(selected_terms), selected_terms
+
+
+def build_dense_hot_fts_queries(
+    conn: sqlite3.Connection,
+    query: str,
+    *,
+    max_terms: int = 4,
+) -> Tuple[List[Tuple[str, List[str]]], List[str]]:
+    selected_terms = select_informative_hot_fts_terms(conn, query, max_terms=max_terms)
+    if not selected_terms:
+        return [], []
+    if len(selected_terms) == 1:
+        return [(selected_terms[0], [selected_terms[0]])], selected_terms
+
+    queries: List[Tuple[str, List[str]]] = []
+    seen = set()
+    strict_query = " AND ".join(selected_terms)
+    queries.append((strict_query, list(selected_terms)))
+    seen.add(strict_query)
+    if len(selected_terms) <= 3:
+        combo_sizes = list(range(len(selected_terms), 1, -1))
+    else:
+        combo_sizes = [3, 2]
+    for combo_size in combo_sizes:
+        for combo in combinations(selected_terms, combo_size):
+            match_query = " AND ".join(combo)
+            if match_query in seen:
+                continue
+            seen.add(match_query)
+            queries.append((match_query, list(combo)))
+    return queries[:8], selected_terms
+
+
+def build_exact_hot_fts_queries(
+    conn: sqlite3.Connection,
+    query: str,
+    *,
+    max_terms: int = 6,
+) -> List[str]:
+    phrase_tokens = tokenize_query(query)
+    selected_terms = select_informative_hot_fts_terms(conn, query, max_terms=max_terms)
+    queries: List[str] = []
+    seen = set()
+
+    if 1 < len(phrase_tokens) <= 8:
+        phrase_query = '"' + " ".join(phrase_tokens) + '"'
+        queries.append(phrase_query)
+        seen.add(phrase_query)
+
+    if selected_terms:
+        strict_query = " AND ".join(selected_terms)
+        if strict_query not in seen:
+            queries.append(strict_query)
+            seen.add(strict_query)
+        if len(selected_terms) >= 3:
+            top_terms = selected_terms[: min(4, len(selected_terms))]
+            for combo in combinations(top_terms, len(top_terms) - 1):
+                combo_query = " AND ".join(combo)
+                if combo_query in seen:
+                    continue
+                queries.append(combo_query)
+                seen.add(combo_query)
+    return queries[:6]
+
+
+def hot_fts_select_sql(*, include_authors: bool = False) -> str:
+    author_columns = ""
+    if include_authors:
+        author_columns = """
+                papers.authors_raw,
+                papers.normalized_authors,
+        """
+    return f"""
+            SELECT
+                {HOT_FTS_TABLE}.paper_id,
+                papers.title,
+                {author_columns}
+                papers.abstract,
+                papers.section_titles,
+                bm25({HOT_FTS_TABLE}, 1.8, 0.8, 1.2, 0.8) AS bm25_score
+            FROM {HOT_FTS_TABLE}
+            JOIN papers ON papers.paper_id = {HOT_FTS_TABLE}.paper_id
+            WHERE {HOT_FTS_TABLE} MATCH ?
+            ORDER BY bm25_score ASC
+            LIMIT ?
+    """
+
+
+def build_hot_fts_index(conn: sqlite3.Connection, *, force_rebuild: bool = False) -> None:
+    ensure_hot_fts_table(conn)
+    paper_signature = get_paper_content_signature(conn=conn)
+    cached_signature = get_runtime_metadata(conn, HOT_FTS_SIGNATURE_KEY, "")
+    hot_row_count = int(conn.execute(f"SELECT COUNT(*) FROM {HOT_FTS_TABLE}").fetchone()[0] or 0)
+    if not force_rebuild and cached_signature == paper_signature and hot_row_count > 0:
+        return
+
+    conn.execute(f"DELETE FROM {HOT_FTS_TABLE}")
+    conn.execute(
+        f"""
+        INSERT INTO {HOT_FTS_TABLE} (paper_id, title, authors, abstract, section_titles)
+        SELECT
+            paper_id,
+            title,
+            COALESCE(authors_raw, ''),
+            abstract,
+            COALESCE(section_titles, '')
         FROM papers
         ORDER BY paper_id
         """
-    ):
-        try:
-            section_titles = json.loads(row["section_titles"])
-        except json.JSONDecodeError:
-            section_titles = []
-
-        fts_rows.append(
-            (
-                row["paper_id"],
-                clean_text(row["title"]),
-                clean_text(row["abstract"]),
-                "\n".join(clean_text(title) for title in section_titles if clean_text(title)),
-                "\n".join(
-                    snippet for snippet in section_snippets_by_paper.get(row["paper_id"], []) if snippet
-                ),
-            )
-        )
-
-    conn.executemany(
-        """
-        INSERT INTO paper_search_fts (paper_id, title, abstract, section_titles, section_snippet)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        fts_rows,
     )
+    set_runtime_metadata(conn, HOT_FTS_SIGNATURE_KEY, paper_signature)
     conn.commit()
+
+
+def ensure_query_runtime_artifacts(
+    db_path: str | Path | None = None,
+    *,
+    build_exact_cache: bool = False,
+) -> Dict[str, Any]:
+    database_path = resolve_db_path(db_path)
+    with connect_db(database_path) as conn:
+        paper_signature = get_paper_content_signature(conn=conn)
+        build_hot_fts_index(conn, force_rebuild=False)
+        ensure_hot_fts_vocab_table(conn)
+
+    exact_ready = False
+    if build_exact_cache:
+        exact_ready = True
+
+    return {
+        "db_path": str(database_path),
+        "paper_signature": paper_signature,
+        "hot_fts_ready": True,
+        "hot_fts_vocab_ready": True,
+        "exact_ready": exact_ready,
+    }
 
 
 def load_raw_json(path: Path) -> Dict[str, Any]:
@@ -473,7 +1032,13 @@ def load_raw_json(path: Path) -> Dict[str, Any]:
 
 
 # 全量扫描数据集并重建整个检索数据库。
-def build_database(data_root: Path, db_path: Path) -> Dict[str, int]:
+def build_database(
+    data_root: Path,
+    db_path: Path,
+    *,
+    store_raw_json: bool = False,
+    source_fingerprint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, int]:
     """
     把全量论文 JSON 写入 SQLite，并构建 FTS 检索表。
 
@@ -481,33 +1046,65 @@ def build_database(data_root: Path, db_path: Path) -> Dict[str, int]:
     """
 
     ensure_system_layout()
-    data_root = resolve_dataset_root(data_root)
-    paper_paths = sorted(data_root.glob("*.json"))
+    data_source = resolve_dataset_root(data_root)
     runtime_backup = backup_runtime_tables(db_path)
+    EXACT_SEARCH_CACHE.clear()
 
-    with initialize_database(db_path) as conn:
-        for path in paper_paths:
-            raw_json = load_raw_json(path)
-            source_path = source_path_for(data_root, path)
-            paper_id = path.stem
-            raw_record = RawPaperRecord(
-                paper_id=paper_id,
-                source_path=source_path,
-                raw_json=raw_json,
-            )
-            index_record = parse_paper_json(raw_json, source_path)
+    raw_batch: List[RawPaperRecord] = []
+    index_batch: List[PaperIndexRecord] = []
+    section_batch: List[PaperSectionRecord] = []
+
+    def flush_batches(conn: sqlite3.Connection) -> None:
+        if not raw_batch and not index_batch and not section_batch:
+            return
+        if store_raw_json and raw_batch:
+            insert_raw_papers(conn, raw_batch)
+        insert_papers(conn, index_batch)
+        insert_sections(conn, section_batch)
+        conn.commit()
+        raw_batch.clear()
+        index_batch.clear()
+        section_batch.clear()
+
+    conn = initialize_database(db_path)
+    try:
+        for paper_id, source_path, raw_json in iter_dataset_json_records(data_source):
             section_records = extract_sections(raw_json, paper_id)
-            insert_raw_paper(conn, raw_record)
-            insert_paper(conn, index_record)
-            insert_sections(conn, section_records)
+            index_record = parse_paper_json(raw_json, source_path, section_records=section_records)
+            if store_raw_json:
+                raw_batch.append(
+                    RawPaperRecord(
+                        paper_id=paper_id,
+                        source_path=source_path,
+                        raw_json=raw_json,
+                    )
+                )
+            index_batch.append(index_record)
+            section_batch.extend(section_records)
+            if len(index_batch) >= DEFAULT_BUILD_BATCH_SIZE:
+                flush_batches(conn)
 
+        flush_batches(conn)
         build_fts_index(conn)
+        paper_signature = get_paper_content_signature(conn=conn)
+        set_runtime_metadata(conn, PAPER_CONTENT_SIGNATURE_KEY, paper_signature)
+        if source_fingerprint is not None:
+            write_build_runtime_metadata(
+                conn,
+                source_fingerprint=source_fingerprint,
+                store_raw_json=store_raw_json,
+            )
+        build_hot_fts_index(conn, force_rebuild=True)
         restore_runtime_tables(conn, runtime_backup)
         stats = {
             "papers": conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0],
             "sections": conn.execute("SELECT COUNT(*) FROM paper_sections").fetchone()[0],
             "fts_rows": conn.execute("SELECT COUNT(*) FROM paper_search_fts").fetchone()[0],
         }
+        if store_raw_json:
+            stats["raw_papers"] = conn.execute("SELECT COUNT(*) FROM raw_papers").fetchone()[0]
+    finally:
+        conn.close()
 
     return stats
 
@@ -647,31 +1244,26 @@ def load_sections_for_papers(
     if not paper_ids:
         return {}
 
-    placeholders = ", ".join("?" for _ in paper_ids)
-    rows = conn.execute(
-        f"""
-        SELECT paper_id, section_title, section_snippet
-        FROM paper_sections
-        WHERE paper_id IN ({placeholders})
-        ORDER BY paper_id, section_order
-        """,
-        list(paper_ids),
-    ).fetchall()
-
     sections_by_paper: Dict[str, List[sqlite3.Row]] = defaultdict(list)
-    for row in rows:
-        sections_by_paper[row["paper_id"]].append(row)
+    for start in range(0, len(paper_ids), SQLITE_VARIABLE_CHUNK_SIZE):
+        chunk = list(paper_ids[start : start + SQLITE_VARIABLE_CHUNK_SIZE])
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"""
+            SELECT paper_id, section_title, section_snippet
+            FROM paper_sections
+            WHERE paper_id IN ({placeholders})
+            ORDER BY paper_id, section_order
+            """,
+            chunk,
+        ).fetchall()
+        for row in rows:
+            sections_by_paper[row["paper_id"]].append(row)
     return sections_by_paper
 
 
 def _exact_search_cache_key(database_path: Path) -> str:
-    resolved = database_path.resolve(strict=False)
-    try:
-        stat = resolved.stat()
-        marker = f"{stat.st_mtime_ns}:{stat.st_size}"
-    except OSError:
-        marker = "missing"
-    return f"{resolved}|{marker}"
+    return get_paper_content_signature(database_path)
 
 
 # 构建标题、作者和短语匹配用的内存索引，加速 exact match。
@@ -684,7 +1276,6 @@ def _build_exact_search_index(database_path: Path) -> Dict[str, Any]:
             ORDER BY paper_id
             """
         ).fetchall()
-        sections_by_paper = load_sections_for_papers(conn, [row["paper_id"] for row in paper_rows])
 
     papers: List[Dict[str, Any]] = []
     for row in paper_rows:
@@ -701,18 +1292,6 @@ def _build_exact_search_index(database_path: Path) -> Dict[str, Any]:
         except json.JSONDecodeError:
             section_titles = []
 
-        section_payloads: List[Dict[str, str]] = []
-        for section_row in sections_by_paper.get(paper_id, []):
-            section_title = clean_text(section_row["section_title"])
-            section_snippet = clean_text(section_row["section_snippet"])
-            section_payloads.append(
-                {
-                    "section_title": section_title,
-                    "section_snippet": section_snippet,
-                    "combined_norm": normalize_match_text(f"{section_title}\n{section_snippet}"),
-                }
-            )
-
         papers.append(
             {
                 "paper_id": paper_id,
@@ -725,7 +1304,6 @@ def _build_exact_search_index(database_path: Path) -> Dict[str, Any]:
                 "abstract_norm": normalize_match_text(abstract),
                 "section_titles": section_titles,
                 "section_title_norms": [normalize_match_text(item) for item in section_titles],
-                "sections": section_payloads,
             }
         )
     return {"papers": papers}
@@ -737,10 +1315,22 @@ def _load_exact_search_index(database_path: Path) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
+    disk_cached = load_exact_index_from_disk(cache_key)
+    if disk_cached is not None:
+        EXACT_SEARCH_CACHE.clear()
+        EXACT_SEARCH_CACHE[cache_key] = disk_cached
+        return disk_cached
+
     payload = _build_exact_search_index(database_path)
+    persist_exact_index_to_disk(cache_key, payload)
     EXACT_SEARCH_CACHE.clear()
     EXACT_SEARCH_CACHE[cache_key] = payload
     return payload
+
+
+def prepare_exact_search_index(db_path: str | Path | None = None) -> Dict[str, Any]:
+    database_path = resolve_db_path(db_path)
+    return _load_exact_search_index(database_path)
 
 
 # 从命中的字段里挑选最适合展示给用户的证据摘要。
@@ -753,6 +1343,7 @@ def pick_match_evidence(
     tokens = tokenize_query(query)
 
     title = clean_text(paper_row["title"])
+    authors_raw = clean_text(paper_row["authors_raw"]) if "authors_raw" in paper_row.keys() else ""
     abstract = clean_text(paper_row["abstract"])
     try:
         section_titles = json.loads(paper_row["section_titles"])
@@ -773,6 +1364,14 @@ def pick_match_evidence(
             build_snippet(abstract, normalized_query, tokens),
         ),
     ]
+    if authors_raw:
+        candidates.append(
+            (
+                score_text(authors_raw, normalized_query, tokens) + 15,
+                "authors",
+                build_snippet(authors_raw, normalized_query, tokens),
+            )
+        )
 
     best_section_title = ""
     best_section_title_score = 0
@@ -837,6 +1436,7 @@ def search_basic(
         return []
 
     with connect_db(database_path) as conn:
+        ensure_hot_fts_table(conn)
         rows = conn.execute(
             """
             SELECT
@@ -877,6 +1477,88 @@ def search_basic(
     return results
 
 
+def search_basic_fast(
+    query: str,
+    top_k: int = 10,
+    db_path: str | Path | None = None,
+) -> List[Dict[str, Any]]:
+    database_path = resolve_db_path(db_path)
+    if not database_path.exists():
+        return []
+
+    with connect_db(database_path) as conn:
+        build_hot_fts_index(conn, force_rebuild=False)
+        fts_query, _ = build_hot_fts_match_query(conn, query, max_terms=4)
+        if not fts_query:
+            return []
+        rows = conn.execute(hot_fts_select_sql(include_authors=True), (fts_query, top_k)).fetchall()
+
+        results: List[Dict[str, Any]] = []
+        for rank, row in enumerate(rows, start=1):
+            matched_field, matched_snippet = pick_match_evidence(
+                row,
+                [],
+                query,
+            )
+            raw_score = row["bm25_score"] if row["bm25_score"] is not None else 0.0
+            results.append(
+                {
+                    "paper_id": row["paper_id"],
+                    "title": row["title"],
+                    "matched_field": matched_field,
+                    "matched_snippet": matched_snippet,
+                    "fts_score": round(-float(raw_score), 6),
+                    "rank": rank,
+                }
+            )
+    return results
+
+
+def search_dense_fast(
+    query: str,
+    top_k: int = 10,
+    db_path: str | Path | None = None,
+) -> List[Dict[str, Any]]:
+    database_path = resolve_db_path(db_path)
+    if not database_path.exists():
+        return []
+
+    with connect_db(database_path) as conn:
+        build_hot_fts_index(conn, force_rebuild=False)
+        subqueries, selected_terms = build_dense_hot_fts_queries(conn, query, max_terms=4)
+        if not subqueries:
+            return []
+
+        aggregated: Dict[str, Dict[str, Any]] = {}
+        candidate_limit = max(top_k * 2, 40)
+        total_term_count = max(len(selected_terms), 1)
+        for match_query, matched_terms in subqueries:
+            rows = conn.execute(
+                hot_fts_select_sql(include_authors=False),
+                (match_query, candidate_limit),
+            ).fetchall()
+            coverage = len(matched_terms) / total_term_count
+            for row in rows:
+                raw_score = -float(row["bm25_score"] or 0.0)
+                combined_score = raw_score + (coverage * 3.0)
+                existing = aggregated.get(row["paper_id"])
+                if existing is None or combined_score > existing["dense_raw_score"]:
+                    aggregated[row["paper_id"]] = {
+                        "paper_id": row["paper_id"],
+                        "title": row["title"],
+                        "dense_raw_score": round(combined_score, 6),
+                        "matched_terms": list(matched_terms),
+                    }
+
+    results = sorted(
+        aggregated.values(),
+        key=lambda item: (-float(item["dense_raw_score"]), item["title"]),
+    )
+    for rank, item in enumerate(results, start=1):
+        item["rank"] = rank
+    return results[:top_k]
+
+
 def pick_exact_author_match(authors: Sequence[str], query: str, tokens: Sequence[str]) -> str:
     normalized_query = normalize_match_text(query)
     best_author = ""
@@ -915,8 +1597,43 @@ def search_exact_matches(
     if not database_path.exists() or not normalized_query:
         return []
 
-    exact_index = _load_exact_search_index(database_path)
-    paper_rows = exact_index["papers"]
+    with connect_db(database_path) as conn:
+        build_hot_fts_index(conn, force_rebuild=False)
+        candidate_queries = build_exact_hot_fts_queries(conn, query, max_terms=6)
+        if not candidate_queries:
+            return []
+
+        candidate_rows: Dict[str, Dict[str, Any]] = {}
+        candidate_limit = max(top_k * 8, 120)
+        for match_query in candidate_queries:
+            rows = conn.execute(
+                hot_fts_select_sql(include_authors=True),
+                (match_query, candidate_limit),
+            ).fetchall()
+            for row in rows:
+                if row["paper_id"] in candidate_rows:
+                    continue
+                try:
+                    normalized_authors = json.loads(row["normalized_authors"])
+                except json.JSONDecodeError:
+                    normalized_authors = []
+                try:
+                    section_titles = [clean_text(str(item)) for item in json.loads(row["section_titles"])]
+                except json.JSONDecodeError:
+                    section_titles = []
+                candidate_rows[row["paper_id"]] = {
+                    "paper_id": row["paper_id"],
+                    "title": clean_text(row["title"]),
+                    "title_norm": normalize_match_text(row["title"]),
+                    "authors_raw": clean_text(row["authors_raw"]),
+                    "authors_norm": normalize_match_text(row["authors_raw"]),
+                    "normalized_authors": normalized_authors,
+                    "abstract": clean_text(row["abstract"]),
+                    "abstract_norm": normalize_match_text(row["abstract"]),
+                    "section_titles": section_titles,
+                    "section_title_norms": [normalize_match_text(item) for item in section_titles],
+                }
+        paper_rows = list(candidate_rows.values())
 
     results: List[Dict[str, Any]] = []
     for row in paper_rows:
@@ -927,7 +1644,6 @@ def search_exact_matches(
         normalized_authors = row["normalized_authors"]
         section_titles = row["section_titles"]
         section_title_norms = row["section_title_norms"]
-        section_rows = row["sections"]
 
         matches: List[Dict[str, Any]] = []
 
@@ -1004,23 +1720,6 @@ def search_exact_matches(
                         "matched_field": "section_titles",
                         "matched_snippet": build_snippet(best_section_title, normalized_query, tokens),
                         "exact_score": 190,
-                    }
-                )
-
-            best_section_snippet = ""
-            best_section_snippet_score = 0
-            for section_row in section_rows:
-                current_score = score_normalized_text(section_row["combined_norm"], normalized_query, tokens)
-                if current_score > best_section_snippet_score:
-                    best_section_snippet_score = current_score
-                    best_section_snippet = section_row["section_snippet"]
-            if best_section_snippet_score >= max(2, len(tokens)):
-                matches.append(
-                    {
-                        "match_type": "phrase_match",
-                        "matched_field": "section_snippet",
-                        "matched_snippet": build_snippet(best_section_snippet, normalized_query, tokens),
-                        "exact_score": 180,
                     }
                 )
 
@@ -1260,7 +1959,7 @@ def main() -> None:
     if args.command is None:
         args = argparse.Namespace(
             command="build",
-            data_root=DATASET_DIR,
+            data_root=get_default_dataset_source(),
             db_path=DEFAULT_DB_PATH,
             query_json_path=DEFAULT_QUERY_JSON_PATH,
             query_text_path=DEFAULT_QUERY_TEXT_PATH,

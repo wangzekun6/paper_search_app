@@ -3,9 +3,9 @@
     "initial_query": "帮我找 LLM agent 的论文",
     "follow_up_reply": "最近两年，综述优先，方法不限",
     "initial_parser": "llm",
-    "initial_used_model": "qwen-plus",
+    "initial_used_model": "gpt-5.1",
     "merged_parser": "llm",
-    "merged_used_model": "qwen-plus",
+    "merged_used_model": "gpt-5.1",
     "initial_intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -337,9 +337,9 @@
     "initial_query": "找机器翻译论文",
     "follow_up_reply": "作者不限，最好近三年，用 COMET 或者质量估计相关",
     "initial_parser": "llm",
-    "initial_used_model": "qwen-plus",
+    "initial_used_model": "gpt-5.1",
     "merged_parser": "llm",
-    "merged_used_model": "qwen-plus",
+    "merged_used_model": "gpt-5.1",
     "initial_intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -673,9 +673,9 @@
     "initial_query": "我想看 RAG",
     "follow_up_reply": "最好是 survey，并且给我解释为什么推荐",
     "initial_parser": "llm",
-    "initial_used_model": "qwen-plus",
+    "initial_used_model": "gpt-5.1",
     "merged_parser": "llm",
-    "merged_used_model": "qwen-plus",
+    "merged_used_model": "gpt-5.1",
     "initial_intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -1011,9 +1011,9 @@
     "initial_query": "找某篇关于 long context 的论文",
     "follow_up_reply": "标题里可能有 Emulating Retrieval Augmented Generation",
     "initial_parser": "llm",
-    "initial_used_model": "qwen-plus",
+    "initial_used_model": "gpt-5.1",
     "merged_parser": "llm",
-    "merged_used_model": "qwen-plus",
+    "merged_used_model": "gpt-5.1",
     "initial_intent_frame": {
       "search_scene": {
         "value": "specific_paper_lookup",
@@ -1347,9 +1347,9 @@
     "initial_query": "找 multimodal reasoning papers",
     "follow_up_reply": "数据集不限，最好结果多样一些",
     "initial_parser": "llm",
-    "initial_used_model": "qwen-plus",
+    "initial_used_model": "gpt-5.1",
     "merged_parser": "llm",
-    "merged_used_model": "qwen-plus",
+    "merged_used_model": "gpt-5.1",
     "initial_intent_frame": {
       "search_scene": {
         "value": "topic_exploration",

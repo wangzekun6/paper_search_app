@@ -16,8 +16,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
+import os
 import re
+import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -41,6 +45,7 @@ from .llm import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OpenAIAPIError,
+    is_transient_openai_error_message,
     structured_chat_completion,
     test_openai_api,
 )
@@ -64,9 +69,55 @@ PROMPT_VERSION = "semantic_v1"
 DEFAULT_TARGET_COUNT = 100
 DEFAULT_PILOT_COUNT = 5
 DEFAULT_QUALITY_SAMPLE_SIZE = 20
-GENERATED_STATUSES = ("generated",)
+MAX_ERROR_LOG_ENTRIES = 2000
+HEURISTIC_FALLBACK_STATUS = "generated_fallback"
+ERROR_STATUS = "error"
+GENERATED_STATUSES = ("generated", HEURISTIC_FALLBACK_STATUS)
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
+DEFAULT_SEMANTIC_BACKFILL_WORKERS = max(
+    1,
+    min(12, int(os.environ.get("SEMANTIC_BACKFILL_WORKERS", "8") or "8")),
+)
+DEFAULT_SEMANTIC_BACKFILL_INFLIGHT = max(
+    DEFAULT_SEMANTIC_BACKFILL_WORKERS,
+    int(
+        os.environ.get(
+            "SEMANTIC_BACKFILL_INFLIGHT",
+            str(DEFAULT_SEMANTIC_BACKFILL_WORKERS * 3),
+        )
+        or str(DEFAULT_SEMANTIC_BACKFILL_WORKERS * 3)
+    ),
+)
+DEFAULT_SEMANTIC_BACKFILL_COMMIT_EVERY = max(
+    1,
+    int(
+        os.environ.get(
+            "SEMANTIC_BACKFILL_COMMIT_EVERY",
+            str(DEFAULT_SEMANTIC_BACKFILL_WORKERS),
+        )
+        or str(DEFAULT_SEMANTIC_BACKFILL_WORKERS)
+    ),
+)
+DEFAULT_SEMANTIC_PROGRESS_EVERY = max(
+    1,
+    int(os.environ.get("SEMANTIC_BACKFILL_PROGRESS_EVERY", "16") or "16"),
+)
+MAX_TITLE_CHARS = 320
+
+
+def force_heuristic_semantic_cards() -> bool:
+    value = str(
+        os.environ.get("SEMANTIC_FORCE_HEURISTIC", "")
+        or os.environ.get("SEMANTIC_BACKFILL_FORCE_HEURISTIC", "")
+        or ""
+    ).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+MAX_AUTHORS_CHARS = 240
+MAX_ABSTRACT_CHARS = 2200
+MAX_SECTION_TITLE_CHARS = 160
+MAX_SECTION_TITLES = 18
+MAX_PARAGRAPH_CHARS = 700
 
 PAPER_TYPE_ENUM = [
     "survey",
@@ -299,6 +350,13 @@ def split_paragraphs(text: str, limit: int = 2) -> List[str]:
     return paragraphs[:limit]
 
 
+def truncate_text_chars(value: Any, limit: int) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
 def clean_tag_list(values: Iterable[Any], limit: int = 8) -> List[str]:
     items: List[str] = []
     seen = set()
@@ -314,6 +372,12 @@ def clean_tag_list(values: Iterable[Any], limit: int = 8) -> List[str]:
         if len(items) >= limit:
             break
     return items
+
+
+def chunk_items(values: Sequence[Any], size: int) -> Iterable[Sequence[Any]]:
+    chunk_size = max(1, int(size))
+    for index in range(0, len(values), chunk_size):
+        yield values[index : index + chunk_size]
 
 
 def enforce_enum(value: str, allowed: Sequence[str], fallback: str) -> str:
@@ -430,15 +494,39 @@ def build_llm_input_from_row(row: Any) -> Dict[str, Any]:
     # 以及 appendix_titles，形成固定且可控的输入窗口。
     payload = {
         "paper_id": row["paper_id"],
-        "title": row["title"],
-        "authors": row["authors_raw"],
-        "abstract": row["abstract"],
-        "section_titles": section_titles,
-        "intro_paragraphs": split_paragraphs(row["intro_text"], limit=2),
-        "methods_paragraphs": split_paragraphs(row["methods_text"], limit=2),
-        "results_paragraphs": split_paragraphs(row["results_text"], limit=2),
-        "discussion_paragraphs": split_paragraphs(row["discussion_text"], limit=2),
-        "appendix_titles": appendix_titles,
+        "title": truncate_text_chars(row["title"], MAX_TITLE_CHARS),
+        "authors": truncate_text_chars(row["authors_raw"], MAX_AUTHORS_CHARS),
+        "abstract": truncate_text_chars(row["abstract"], MAX_ABSTRACT_CHARS),
+        "section_titles": [
+            truncate_text_chars(item, MAX_SECTION_TITLE_CHARS)
+            for item in section_titles[:MAX_SECTION_TITLES]
+            if truncate_text_chars(item, MAX_SECTION_TITLE_CHARS)
+        ],
+        "intro_paragraphs": [
+            truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+            for item in split_paragraphs(row["intro_text"], limit=2)
+            if truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+        ],
+        "methods_paragraphs": [
+            truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+            for item in split_paragraphs(row["methods_text"], limit=2)
+            if truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+        ],
+        "results_paragraphs": [
+            truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+            for item in split_paragraphs(row["results_text"], limit=2)
+            if truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+        ],
+        "discussion_paragraphs": [
+            truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+            for item in split_paragraphs(row["discussion_text"], limit=2)
+            if truncate_text_chars(item, MAX_PARAGRAPH_CHARS)
+        ],
+        "appendix_titles": [
+            truncate_text_chars(item, MAX_SECTION_TITLE_CHARS)
+            for item in appendix_titles[:MAX_SECTION_TITLES]
+            if truncate_text_chars(item, MAX_SECTION_TITLE_CHARS)
+        ],
     }
     return payload
 
@@ -503,13 +591,30 @@ def validate_semantic_card(raw_card: Dict[str, Any], paper_context: Dict[str, An
 # 缓存当前大模型运行时是否可用，避免重复探测。
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
-    if OPENAI_RUNTIME_AVAILABLE is not None:
+    if force_heuristic_semantic_cards():
+        OPENAI_RUNTIME_AVAILABLE = None
+        OPENAI_RUNTIME_MESSAGE = "heuristic semantic-card mode forced by environment"
+        return True
+    if OPENAI_RUNTIME_AVAILABLE is True:
         return OPENAI_RUNTIME_AVAILABLE
+    if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
+        return False
+    if not OPENAI_API_KEY:
+        OPENAI_RUNTIME_AVAILABLE = False
+        OPENAI_RUNTIME_MESSAGE = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
+        return False
 
     ok, message = test_openai_api(api_key=OPENAI_API_KEY, timeout=30)
-    OPENAI_RUNTIME_AVAILABLE = ok
     OPENAI_RUNTIME_MESSAGE = message
-    return OPENAI_RUNTIME_AVAILABLE
+    if ok:
+        OPENAI_RUNTIME_AVAILABLE = True
+        return True
+    if is_transient_openai_error_message(message):
+        OPENAI_RUNTIME_AVAILABLE = None
+        OPENAI_RUNTIME_MESSAGE = f"{message}；已跳过预检，正式请求时会继续重试。"
+        return True
+    OPENAI_RUNTIME_AVAILABLE = False
+    return False
 
 
 def split_sentences(text: str, limit: int = 3) -> List[str]:
@@ -660,6 +765,20 @@ def total_paper_count(conn: Any) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0])
 
 
+def resolve_target_count(
+    total_papers: int,
+    *,
+    target_count: Optional[int] = None,
+    target_ratio: Optional[float] = None,
+) -> Optional[int]:
+    if target_ratio is not None:
+        resolved_ratio = max(0.0, float(target_ratio))
+        return min(total_papers, max(0, math.ceil(total_papers * resolved_ratio)))
+    if target_count is None:
+        return None
+    return min(total_papers, max(0, int(target_count)))
+
+
 def list_missing_generated_ids(conn: Any, limit: Optional[int] = None) -> List[str]:
     sql = f"""
         SELECT papers.paper_id
@@ -761,11 +880,19 @@ def load_error_log() -> List[Dict[str, Any]]:
 def append_error_log(entry: Dict[str, Any]) -> None:
     errors = load_error_log()
     errors.append(entry)
+    if len(errors) > MAX_ERROR_LOG_ENTRIES:
+        errors = errors[-MAX_ERROR_LOG_ENTRIES:]
     dump_json(ERROR_LOG_PATH, errors)
 
 
 # 语义卡片统一通过 upsert 写回数据库，避免重复插入逻辑分散。
-def upsert_semantic_card(conn: Any, card: Dict[str, Any], card_status: str) -> None:
+def upsert_semantic_card(
+    conn: Any,
+    card: Dict[str, Any],
+    card_status: str,
+    *,
+    commit: bool = True,
+) -> None:
     conn.execute(
         """
         INSERT INTO paper_semantic_cards (paper_id, semantic_card_json, card_status, updated_at)
@@ -777,8 +904,41 @@ def upsert_semantic_card(conn: Any, card: Dict[str, Any], card_status: str) -> N
         """,
         (card["paper_id"], json.dumps(card, ensure_ascii=False), card_status),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     write_json(semantic_card_cache_path(card["paper_id"]), {"status": card_status, "card": card})
+
+
+def load_paper_rows_for_ids(conn: Any, paper_ids: Sequence[str]) -> Dict[str, Any]:
+    target_ids = clean_tag_list(paper_ids, limit=max(len(paper_ids), 1))
+    if not target_ids:
+        return {}
+
+    rows_by_id: Dict[str, Any] = {}
+    for batch_ids in chunk_items(target_ids, 400):
+        placeholders = ", ".join("?" for _ in batch_ids)
+        rows = conn.execute(
+            f"""
+            SELECT
+                paper_id,
+                title,
+                authors_raw,
+                abstract,
+                section_titles,
+                intro_text,
+                methods_text,
+                results_text,
+                discussion_text,
+                appendix_titles,
+                year_month
+            FROM papers
+            WHERE paper_id IN ({placeholders})
+            """,
+            list(batch_ids),
+        ).fetchall()
+        for row in rows:
+            rows_by_id[row["paper_id"]] = row
+    return rows_by_id
 
 
 # 选择优先生成语义卡片的候选论文集合。
@@ -824,8 +984,175 @@ def select_candidate_paper_ids(conn: Any, limit: int) -> List[str]:
     return candidates[:limit]
 
 
-# 单篇论文语义卡片生成入口，优先复用缓存，必要时调用 LLM 或启发式兜底。
-def generate_card_for_paper(conn: Any, paper_id: str, refresh: bool = False) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+# 单篇论文语义卡片生成入口，优先复用缓存，必要时调用 LLM。
+def generate_semantic_card_from_context(
+    paper_context: Dict[str, Any],
+    *,
+    allow_heuristic_fallback: bool = False,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str], str]:
+    paper_id = paper_context.get("paper_id", "")
+    messages = build_messages(paper_context)
+    if force_heuristic_semantic_cards():
+        fallback_card = heuristic_semantic_card(paper_context)
+        append_error_log(
+            {
+                "paper_id": paper_id,
+                "mode": "heuristic_fallback",
+                "reason": "forced_by_env",
+            }
+        )
+        return fallback_card, "heuristic_fallback", HEURISTIC_FALLBACK_STATUS
+    if not can_use_openai():
+        if allow_heuristic_fallback:
+            fallback_card = heuristic_semantic_card(paper_context)
+            append_error_log(
+                {
+                    "paper_id": paper_id,
+                    "mode": "heuristic_fallback",
+                    "reason": f"llm_unavailable: {OPENAI_RUNTIME_MESSAGE}",
+                }
+            )
+            return fallback_card, "heuristic_fallback", HEURISTIC_FALLBACK_STATUS
+        raise OpenAIAPIError(f"核心语义能力不可用：PaperSemanticCard 生成依赖 LLM。{OPENAI_RUNTIME_MESSAGE}")
+
+    try:
+        raw_card, used_model = structured_chat_completion(
+            messages=messages,
+            schema_name="paper_semantic_card",
+            schema=SEMANTIC_CARD_SCHEMA,
+            model=OPENAI_MODEL,
+            temperature=0.2,
+            max_tokens=1400,
+            timeout=60,
+            api_key=OPENAI_API_KEY,
+        )
+        card = validate_semantic_card(raw_card, paper_context)
+        return card, used_model, "generated"
+    except Exception as exc:
+        append_error_log({"paper_id": paper_id, "mode": "llm_error", "error": str(exc)})
+        if allow_heuristic_fallback:
+            fallback_card = heuristic_semantic_card(paper_context)
+            append_error_log(
+                {
+                    "paper_id": paper_id,
+                    "mode": "heuristic_fallback",
+                    "reason": str(exc),
+                }
+            )
+            return fallback_card, "heuristic_fallback", HEURISTIC_FALLBACK_STATUS
+        raise OpenAIAPIError(f"核心语义能力不可用：为 {paper_id} 生成 PaperSemanticCard 失败。{exc}") from exc
+
+
+def generate_cards_for_contexts(
+    conn: Any,
+    paper_contexts: Sequence[Dict[str, Any]],
+    *,
+    allow_heuristic_fallback: bool = False,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    progress_stage: str = "generate_cards",
+) -> Dict[str, Any]:
+    contexts = [item for item in paper_contexts if isinstance(item, dict) and item.get("paper_id")]
+    total_count = len(contexts)
+    if not contexts:
+        return {
+            "requested_count": 0,
+            "processed_count": 0,
+            "generated_count": 0,
+            "heuristic_fallback_count": 0,
+            "error_count": 0,
+            "error_samples": [],
+            "generated_paper_ids": [],
+            "worker_count": 0,
+            "throughput_per_minute": 0.0,
+        }
+
+    worker_count = min(DEFAULT_SEMANTIC_BACKFILL_WORKERS, total_count)
+    inflight = max(worker_count, min(DEFAULT_SEMANTIC_BACKFILL_INFLIGHT, total_count))
+    generated_count = 0
+    heuristic_fallback_count = 0
+    error_count = 0
+    processed_count = 0
+    pending_commit_count = 0
+    error_samples: List[Dict[str, str]] = []
+    generated_paper_ids: List[str] = []
+    started_at = time.perf_counter()
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        for context_batch in chunk_items(contexts, inflight):
+            future_map = {
+                executor.submit(
+                    generate_semantic_card_from_context,
+                    paper_context,
+                    allow_heuristic_fallback=allow_heuristic_fallback,
+                ): paper_context["paper_id"]
+                for paper_context in context_batch
+            }
+            for future in as_completed(future_map):
+                paper_id = future_map[future]
+                processed_count += 1
+                try:
+                    card, used_model, card_status = future.result()
+                except Exception as exc:
+                    error_count += 1
+                    if len(error_samples) < 10:
+                        error_samples.append({"paper_id": paper_id, "error": str(exc)})
+                    card = None
+                    used_model = None
+                    card_status = ""
+
+                if card:
+                    upsert_semantic_card(conn, card, card_status, commit=False)
+                    pending_commit_count += 1
+                    generated_count += 1
+                    generated_paper_ids.append(card["paper_id"])
+                    if used_model == "heuristic_fallback":
+                        heuristic_fallback_count += 1
+
+                if pending_commit_count >= DEFAULT_SEMANTIC_BACKFILL_COMMIT_EVERY:
+                    conn.commit()
+                    pending_commit_count = 0
+
+                if progress_callback and (
+                    processed_count == total_count or processed_count % DEFAULT_SEMANTIC_PROGRESS_EVERY == 0
+                ):
+                    elapsed = max(time.perf_counter() - started_at, 1e-6)
+                    progress_callback(
+                        {
+                            "stage": progress_stage,
+                            "processed_count": processed_count,
+                            "total_count": total_count,
+                            "generated_count": generated_count,
+                            "heuristic_fallback_count": heuristic_fallback_count,
+                            "error_count": error_count,
+                            "worker_count": worker_count,
+                            "throughput_per_minute": round(processed_count * 60.0 / elapsed, 2),
+                        }
+                    )
+
+    if pending_commit_count:
+        conn.commit()
+
+    elapsed = max(time.perf_counter() - started_at, 1e-6)
+    return {
+        "requested_count": total_count,
+        "processed_count": processed_count,
+        "generated_count": generated_count,
+        "heuristic_fallback_count": heuristic_fallback_count,
+        "error_count": error_count,
+        "error_samples": error_samples,
+        "generated_paper_ids": generated_paper_ids,
+        "worker_count": worker_count,
+        "throughput_per_minute": round(processed_count * 60.0 / elapsed, 2),
+    }
+
+
+def generate_card_for_paper(
+    conn: Any,
+    paper_id: str,
+    refresh: bool = False,
+    *,
+    allow_heuristic_fallback: bool = False,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     为单篇论文生成语义卡片，并写回数据库缓存。
 
@@ -852,35 +1179,20 @@ def generate_card_for_paper(conn: Any, paper_id: str, refresh: bool = False) -> 
         raise ValueError(f"Paper not found: {paper_id}")
 
     paper_context = build_llm_input_from_row(row)
-    messages = build_messages(paper_context)
-    if not can_use_openai():
-        raise OpenAIAPIError(f"核心语义能力不可用：PaperSemanticCard 生成依赖 LLM。{OPENAI_RUNTIME_MESSAGE}")
-    try:
-        # 主路径只接受真实模型输出。
-        # 如果模型调用或结构化输出失败，直接报错，不回退规则卡片。
-        raw_card, used_model = structured_chat_completion(
-            messages=messages,
-            schema_name="paper_semantic_card",
-            schema=SEMANTIC_CARD_SCHEMA,
-            model=OPENAI_MODEL,
-            temperature=0.2,
-            max_tokens=1400,
-            timeout=60,
-            api_key=OPENAI_API_KEY,
-        )
-        card = validate_semantic_card(raw_card, paper_context)
-        upsert_semantic_card(conn, card, "generated")
-        return card, used_model
-    except Exception as exc:
-        append_error_log({"paper_id": paper_id, "error": str(exc)})
-        raise OpenAIAPIError(f"核心语义能力不可用：为 {paper_id} 生成 PaperSemanticCard 失败。{exc}") from exc
+    card, used_model, card_status = generate_semantic_card_from_context(
+        paper_context,
+        allow_heuristic_fallback=allow_heuristic_fallback,
+    )
+    if card:
+        upsert_semantic_card(conn, card, card_status, commit=True)
+    return card, used_model
 
 
 # 生成少量示例卡片，供演示和人工抽查。
 def generate_pilot_cards(conn: Any, pilot_ids: Sequence[str], refresh: bool = False) -> List[Dict[str, Any]]:
     cards: List[Dict[str, Any]] = []
     for paper_id in pilot_ids:
-        card, _ = generate_card_for_paper(conn, paper_id, refresh=refresh)
+        card, _ = generate_card_for_paper(conn, paper_id, refresh=refresh, allow_heuristic_fallback=False)
         if card:
             cards.append(card)
     return cards
@@ -892,45 +1204,128 @@ def generate_cards_for_paper_ids(
     paper_ids: Sequence[str],
     *,
     refresh: bool = False,
+    allow_heuristic_fallback: bool = False,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
-    target_ids = clean_string_list(paper_ids, limit=max(len(paper_ids), 1))
-    generated_count = 0
-    error_count = 0
-    processed_count = 0
+    target_ids = clean_tag_list(paper_ids, limit=max(len(paper_ids), 1))
     error_samples: List[Dict[str, str]] = []
     total_count = len(target_ids)
-    for paper_id in target_ids:
-        processed_count += 1
-        try:
-            card, _ = generate_card_for_paper(conn, paper_id, refresh=refresh)
-            if card:
-                generated_count += 1
-        except Exception as exc:
-            error_count += 1
-            if len(error_samples) < 10:
-                error_samples.append({"paper_id": paper_id, "error": str(exc)})
-        if progress_callback and (processed_count == total_count or processed_count % 5 == 0):
+    if not target_ids:
+        return {
+            "requested_count": 0,
+            "processed_count": 0,
+            "generated_count": 0,
+            "heuristic_fallback_count": 0,
+            "error_count": 0,
+            "error_samples": [],
+        }
+
+    existing_generated_ids: set[str] = set()
+    if not refresh:
+        for batch_ids in chunk_items(target_ids, 400):
+            placeholders = ", ".join("?" for _ in batch_ids)
+            rows = conn.execute(
+                f"""
+                SELECT paper_id
+                FROM paper_semantic_cards
+                WHERE card_status IN ({', '.join('?' for _ in GENERATED_STATUSES)})
+                  AND paper_id IN ({placeholders})
+                """,
+                list(GENERATED_STATUSES) + list(batch_ids),
+            ).fetchall()
+            existing_generated_ids.update(row["paper_id"] for row in rows)
+
+    pending_ids = [paper_id for paper_id in target_ids if refresh or paper_id not in existing_generated_ids]
+    rows_by_id = load_paper_rows_for_ids(conn, pending_ids)
+    missing_paper_ids = [paper_id for paper_id in pending_ids if paper_id not in rows_by_id]
+    for paper_id in missing_paper_ids[:10]:
+        error_samples.append({"paper_id": paper_id, "error": f"Paper not found: {paper_id}"})
+
+    paper_contexts = [
+        build_llm_input_from_row(rows_by_id[paper_id])
+        for paper_id in pending_ids
+        if paper_id in rows_by_id
+    ]
+
+    cached_count = len(existing_generated_ids)
+    missing_paper_count = len(missing_paper_ids)
+    processed_count = cached_count + missing_paper_count
+    generated_count = cached_count
+    heuristic_fallback_count = 0
+    error_count = missing_paper_count
+
+    if progress_callback and processed_count and (processed_count == total_count or processed_count % 5 == 0):
+        progress_callback(
+            {
+                "stage": "generate_cards",
+                "processed_count": processed_count,
+                "total_count": total_count,
+                "generated_count": generated_count,
+                "heuristic_fallback_count": heuristic_fallback_count,
+                "error_count": error_count,
+            }
+        )
+
+    generation_result = {
+        "processed_count": 0,
+        "generated_count": 0,
+        "heuristic_fallback_count": 0,
+        "error_count": 0,
+        "error_samples": [],
+    }
+    if paper_contexts:
+        processed_offset = processed_count
+        generated_offset = generated_count
+        error_offset = error_count
+
+        def wrapped_progress(progress: Dict[str, Any]) -> None:
+            if not progress_callback:
+                return
             progress_callback(
                 {
                     "stage": "generate_cards",
-                    "processed_count": processed_count,
+                    "processed_count": processed_offset + int(progress.get("processed_count", 0)),
                     "total_count": total_count,
-                    "generated_count": generated_count,
-                    "error_count": error_count,
+                    "generated_count": generated_offset + int(progress.get("generated_count", 0)),
+                    "heuristic_fallback_count": int(progress.get("heuristic_fallback_count", 0)),
+                    "error_count": error_offset + int(progress.get("error_count", 0)),
+                    "worker_count": progress.get("worker_count", 0),
+                    "throughput_per_minute": progress.get("throughput_per_minute", 0.0),
                 }
             )
+
+        generation_result = generate_cards_for_contexts(
+            conn,
+            paper_contexts,
+            allow_heuristic_fallback=allow_heuristic_fallback,
+            progress_callback=wrapped_progress,
+            progress_stage="generate_cards",
+        )
+        error_samples.extend(generation_result.get("error_samples", []))
+
+    processed_count += int(generation_result.get("processed_count", 0))
+    generated_count += int(generation_result.get("generated_count", 0))
+    heuristic_fallback_count += int(generation_result.get("heuristic_fallback_count", 0))
+    error_count += int(generation_result.get("error_count", 0))
     return {
         "requested_count": total_count,
         "processed_count": processed_count,
         "generated_count": generated_count,
+        "heuristic_fallback_count": heuristic_fallback_count,
         "error_count": error_count,
-        "error_samples": error_samples,
+        "error_samples": error_samples[:10],
     }
 
 
 # 持续生成语义卡片直到达到目标数量。
-def generate_cards_until_target(conn: Any, target_count: int, refresh: bool = False) -> int:
+def generate_cards_until_target(
+    conn: Any,
+    target_count: int,
+    refresh: bool = False,
+    *,
+    allow_heuristic_fallback: bool = False,
+    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> int:
     """
     持续生成语义卡片，直到达到目标数量。
 
@@ -939,28 +1334,119 @@ def generate_cards_until_target(conn: Any, target_count: int, refresh: bool = Fa
     """
 
     existing_ids = load_existing_generated_ids(conn)
+    existing_count_before = len(existing_ids)
     if len(existing_ids) >= target_count and not refresh:
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "generate_cards_until_target",
+                    "processed_count": 0,
+                    "candidate_count": 0,
+                    "generated_count": 0,
+                    "error_count": 0,
+                    "current_count": existing_count_before,
+                    "target_count": target_count,
+                    "remaining_to_target": 0,
+                    "target_reached": True,
+                }
+            )
         return len(existing_ids)
 
     candidates = select_candidate_paper_ids(conn, limit=max(target_count * 2, 200))
     refreshed_ids: set[str] = set()
-    for paper_id in candidates:
-        # refresh 模式下，目标是“本轮真正重刷了多少篇”，
-        # 不能把库里原来就存在的记录直接算进完成数，否则会提前结束。
+    processed_count = 0
+    error_count = 0
+    target_batch_size = max(DEFAULT_SEMANTIC_BACKFILL_INFLIGHT, DEFAULT_SEMANTIC_BACKFILL_WORKERS * 4)
+    for candidate_batch in chunk_items(candidates, target_batch_size):
         if refresh:
-            if paper_id in refreshed_ids:
-                continue
+            pending_ids = [paper_id for paper_id in candidate_batch if paper_id not in refreshed_ids]
         else:
-            if paper_id in existing_ids:
-                continue
-        card, _ = generate_card_for_paper(conn, paper_id, refresh=refresh)
-        if card:
-            existing_ids.add(paper_id)
-            if refresh:
-                refreshed_ids.add(paper_id)
-        if refresh and len(refreshed_ids) >= target_count:
-            break
-        if not refresh and len(existing_ids) >= target_count:
+            pending_ids = [paper_id for paper_id in candidate_batch if paper_id not in existing_ids]
+        if not pending_ids:
+            continue
+
+        rows_by_id = load_paper_rows_for_ids(conn, pending_ids)
+        missing_paper_ids = [paper_id for paper_id in pending_ids if paper_id not in rows_by_id]
+        for paper_id in missing_paper_ids:
+            processed_count += 1
+            error_count += 1
+            append_error_log({"paper_id": paper_id, "mode": "target_backfill_error", "error": f"Paper not found: {paper_id}"})
+
+        paper_contexts = [
+            build_llm_input_from_row(rows_by_id[paper_id])
+            for paper_id in pending_ids
+            if paper_id in rows_by_id
+        ]
+        if not paper_contexts:
+            current_count = len(refreshed_ids) if refresh else len(existing_ids)
+            target_reached = current_count >= target_count
+            if progress_callback:
+                generated_count = len(refreshed_ids) if refresh else max(0, len(existing_ids) - existing_count_before)
+                progress_callback(
+                    {
+                        "stage": "generate_cards_until_target",
+                        "processed_count": processed_count,
+                        "candidate_count": len(candidates),
+                        "generated_count": generated_count,
+                        "error_count": error_count,
+                        "current_count": current_count,
+                        "target_count": target_count,
+                        "remaining_to_target": max(0, target_count - current_count),
+                        "target_reached": target_reached,
+                    }
+                )
+            if target_reached:
+                break
+            continue
+
+        processed_before_chunk = processed_count
+        error_before_chunk = error_count
+        current_before_chunk = len(refreshed_ids) if refresh else len(existing_ids)
+
+        def wrapped_progress(progress: Dict[str, Any]) -> None:
+            if not progress_callback:
+                return
+            generated_in_chunk = int(progress.get("generated_count", 0))
+            current_count = current_before_chunk + generated_in_chunk
+            target_reached = current_count >= target_count
+            total_generated_count = (
+                len(refreshed_ids) + generated_in_chunk
+                if refresh
+                else max(0, current_count - existing_count_before)
+            )
+            progress_callback(
+                {
+                    "stage": "generate_cards_until_target",
+                    "processed_count": processed_before_chunk + int(progress.get("processed_count", 0)),
+                    "candidate_count": len(candidates),
+                    "generated_count": total_generated_count,
+                    "heuristic_fallback_count": int(progress.get("heuristic_fallback_count", 0)),
+                    "error_count": error_before_chunk + int(progress.get("error_count", 0)),
+                    "current_count": current_count,
+                    "target_count": target_count,
+                    "remaining_to_target": max(0, target_count - current_count),
+                    "target_reached": target_reached,
+                    "worker_count": progress.get("worker_count", 0),
+                    "throughput_per_minute": progress.get("throughput_per_minute", 0.0),
+                }
+            )
+
+        generation_result = generate_cards_for_contexts(
+            conn,
+            paper_contexts,
+            allow_heuristic_fallback=allow_heuristic_fallback,
+            progress_callback=wrapped_progress,
+            progress_stage="generate_cards_until_target",
+        )
+        processed_count += int(generation_result.get("processed_count", 0))
+        error_count += int(generation_result.get("error_count", 0))
+        generated_ids = set(generation_result.get("generated_paper_ids", []))
+        existing_ids.update(generated_ids)
+        if refresh:
+            refreshed_ids.update(generated_ids)
+
+        current_count = len(refreshed_ids) if refresh else len(existing_ids)
+        if current_count >= target_count:
             break
 
     return current_card_count(conn)
@@ -1099,8 +1585,9 @@ def write_cache_strategy() -> None:
 - 后续 top-K 命中的论文可以按需补生成。
 
 缓存行为
-- card_status = generated: 已有可用卡片，默认不重复请求。
-- card_status = error: 记录失败占位，避免静默重复请求；需要时可 refresh。
+- card_status = generated: 已有 LLM 生成的可用卡片，默认不重复请求。
+- card_status = generated_fallback: LLM 不可用或结构化输出失败时，落启发式兜底卡片。
+- card_status = error: 记录失败占位；需要时可 refresh。
 - 每次生成后立刻 upsert 到 paper_semantic_cards。
 
 后续扩展

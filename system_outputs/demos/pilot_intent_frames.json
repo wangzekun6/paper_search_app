@@ -2,7 +2,7 @@
   {
     "query": "retrieval augmented generation",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -171,7 +171,7 @@
   {
     "query": "recent agent memory papers",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -340,7 +340,7 @@
   {
     "query": "找最新的 RAG hallucination mitigation 论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -511,7 +511,7 @@
   {
     "query": "帮我找机器翻译综述",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "survey_lookup",
@@ -681,7 +681,7 @@
   {
     "query": "我想看最近两年 speech-to-speech translation 的进展",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",

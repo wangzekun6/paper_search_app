@@ -7,7 +7,7 @@
 
 运行信息
 - OpenAI 可用: True
-- OpenAI 状态说明: OpenAI Key 可用，模型 `qwen-plus` 返回：OK.
+- OpenAI 状态说明: OpenAI Key 可用，模型 `gpt-5.1` 返回：OK.
 - pilot query 数量: 5
 - 测试 query 数量: 25
 - merge 样例数量: 5

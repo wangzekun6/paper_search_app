@@ -3,7 +3,7 @@
 
 这个文件把项目里的大模型访问逻辑集中到一起，主要负责：
 1. 统一读取 API Key / Base URL / 模型名
-2. 兼容 DashScope（百炼）这类 OpenAI-compatible 接口
+2. 兼容不同 OpenAI-compatible 接口与历史环境变量命名
 3. 处理 Windows 代理读取
 4. 发送普通对话请求和结构化 JSON 请求
 5. 给检索 query 改写和语义卡片生成提供共用能力
@@ -302,6 +302,39 @@ def _is_retryable_status(status_code: int) -> bool:
     return status_code in TRANSIENT_HTTP_STATUS_CODES
 
 
+def is_transient_openai_error_message(message: str) -> bool:
+    lowered = str(message or "").lower()
+    if not lowered:
+        return False
+    if any(f"http {status_code}" in lowered for status_code in TRANSIENT_HTTP_STATUS_CODES):
+        return True
+    transient_markers = (
+        "request_error",
+        "timeout",
+        "timed out",
+        "connection aborted",
+        "connection reset",
+        "temporarily unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "service unavailable",
+        "upstream",
+    )
+    return any(marker in lowered for marker in transient_markers)
+
+
+def build_model_candidates(
+    preferred_model: Optional[str] = None,
+    extra_candidates: Optional[Sequence[str]] = None,
+) -> List[str]:
+    candidates: List[str] = []
+    for item in [preferred_model, *(extra_candidates or []), OPENAI_MODEL, *DEFAULT_OPENAI_MODEL_CANDIDATES]:
+        text = str(item or "").strip()
+        if text and text not in candidates:
+            candidates.append(text)
+    return candidates
+
+
 def _retry_backoff_sleep(attempt: int) -> None:
     # Use bounded exponential backoff to absorb transient network and gateway jitter.
     delay = min(6.0, CHAT_BACKOFF_BASE_SECONDS * (2 ** attempt))
@@ -324,12 +357,7 @@ def chat_completion(
     headers = build_headers(api_key)
     # Some compatible endpoints may not grant all model permissions.
     # Try candidates in order, and allow model-level fallback.
-    candidates = list(
-        model_candidates
-        or ([model] if model else [OPENAI_MODEL] + [item for item in DEFAULT_OPENAI_MODEL_CANDIDATES if item != OPENAI_MODEL])
-    )
-    if model and model not in candidates:
-        candidates.insert(0, model)
+    candidates = build_model_candidates(preferred_model=model, extra_candidates=model_candidates)
 
     last_error = "No model request was executed."
     for current_model in candidates:
@@ -377,6 +405,32 @@ def chat_completion(
 
     raise OpenAIAPIError(last_error)
 
+
+def _load_json_payload(content: str) -> Dict[str, Any]:
+    text = str(content or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            payload = json.loads(text[start : end + 1])
+        else:
+            raise
+
+    if not isinstance(payload, dict):
+        raise json.JSONDecodeError("Expected JSON object.", text, 0)
+    return payload
+
+
 # 结构化对话接口，要求模型按照给定 JSON Schema 返回结果。
 def structured_chat_completion(
     messages: Sequence[Dict[str, str]],
@@ -413,7 +467,7 @@ def structured_chat_completion(
             timeout=timeout,
             api_key=api_key,
         )
-        return json.loads(content), used_model
+        return _load_json_payload(content), used_model
     except (OpenAIAPIError, json.JSONDecodeError):
         # 有些兼容 OpenAI 的服务对严格 json_schema 支持不完整，
         # 这时退回 json_object 模式，尽量保持结构化输出可用。
@@ -432,7 +486,29 @@ def structured_chat_completion(
             timeout=timeout,
             api_key=api_key,
         )
-        return json.loads(content), used_model
+        try:
+            return _load_json_payload(content), used_model
+        except json.JSONDecodeError:
+            repair_messages = list(fallback_messages) + [
+                {
+                    "role": "assistant",
+                    "content": content,
+                },
+                {
+                    "role": "system",
+                    "content": "Your previous response was invalid JSON. Return one corrected JSON object only.",
+                },
+            ]
+            repaired_content, repaired_model, _ = chat_completion(
+                messages=repair_messages,
+                response_format={"type": "json_object"},
+                model=model,
+                temperature=0,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                api_key=api_key,
+            )
+            return _load_json_payload(repaired_content), repaired_model
 
 
 # 对当前模型配置做一次最小连通性探测。

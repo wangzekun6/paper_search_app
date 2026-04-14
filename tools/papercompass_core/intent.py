@@ -35,6 +35,7 @@ from .llm import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OpenAIAPIError,
+    is_transient_openai_error_message,
     structured_chat_completion,
     test_openai_api,
 )
@@ -46,8 +47,8 @@ MERGE_OUTPUT_PATH = DEMOS_DIR / "intent_frame_merge_examples.json"
 FEEDBACK_PATH = SYSTEM_OUTPUT_DIR / "eval" / "intent_feedback.txt"
 ERROR_LOG_PATH = INTENT_ERRORS_PATH
 
-PROMPT_VERSION = "intent_v3"
-INTENT_CACHE_VERSION = "intent_llm_required_v2"
+PROMPT_VERSION = "intent_v4"
+INTENT_CACHE_VERSION = "intent_llm_required_v3"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
 MAX_ERROR_LOG_ENTRIES = 500
@@ -557,11 +558,48 @@ Rules:
    - coarse_queries: short, broad lexical queries for sparse recall
    - dense_queries: fuller natural-language expressions for semantic retrieval
    - exact_queries: only clear entities or short phrases for exact match
+   - The retrieval corpus is primarily English academic paper metadata and sections, so query groups should be English search-ready queries even when the user writes in Chinese.
+   - Preserve exact paper titles, author names, dataset names, metrics, and method names when they are explicit entities.
 11. missing_slots, clarification_question, and the three query groups are part of the model output itself, not placeholders for downstream rules.
 12. clarification_question must ask all still-missing key items in one turn, not one by one.
 13. Only mark a slot as missing if it is genuinely unresolved after considering the current text and any provided prior frame.
 14. Do not assume downstream heuristics will repair your output. If something is unresolved, keep it missing and express that in the clarification question.
 """
+
+QUERY_GROUP_REWRITE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "coarse_queries": {"type": "array", "items": {"type": "string"}},
+        "dense_queries": {"type": "array", "items": {"type": "string"}},
+        "exact_queries": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["coarse_queries", "dense_queries", "exact_queries"],
+}
+
+QUERY_GROUP_REWRITE_SYSTEM_PROMPT = """You repair retrieval query groups for an English academic paper corpus.
+
+The corpus is primarily arXiv cs.CL paper titles, abstracts, author strings, section titles, and section snippets.
+
+Rules:
+1. Return valid JSON only.
+2. Follow the schema exactly.
+3. Rewrite the retrieval queries into English search-ready academic phrases when the user wrote the request in Chinese or mixed language.
+4. Keep exact entities verbatim when appropriate, including author names, paper titles, dataset names, metrics, model names, and method names.
+5. coarse_queries should be short lexical search phrases.
+6. dense_queries should be fuller English retrieval descriptions.
+7. exact_queries should contain only clear exact-match entities, not general topics.
+8. Do not invent constraints that are not grounded in the user text or current intent frame.
+9. Prefer technical wording that is likely to appear in English NLP paper metadata and section text.
+"""
+
+QUERY_GROUP_REWRITE_USER_PROMPT_TEMPLATE = """Current user text:
+{user_text}
+
+Current IntentFrame JSON:
+{intent_frame_json}
+
+Return repaired query groups JSON only."""
 
 FOLLOW_UP_MODE_PROMPT = """
 Additional rules for follow_up_merge mode:
@@ -648,12 +686,25 @@ def append_error_log(entry: Dict[str, Any]) -> None:
 # 缓存当前大模型运行时是否可用，避免重复探测。
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
-    if OPENAI_RUNTIME_AVAILABLE is not None:
+    if OPENAI_RUNTIME_AVAILABLE is True:
         return OPENAI_RUNTIME_AVAILABLE
+    if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
+        return False
+    if not OPENAI_API_KEY:
+        OPENAI_RUNTIME_AVAILABLE = False
+        OPENAI_RUNTIME_MESSAGE = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
+        return False
     ok, message = test_openai_api(OPENAI_API_KEY)
-    OPENAI_RUNTIME_AVAILABLE = ok
     OPENAI_RUNTIME_MESSAGE = message
-    return ok
+    if ok:
+        OPENAI_RUNTIME_AVAILABLE = True
+        return True
+    if is_transient_openai_error_message(message):
+        OPENAI_RUNTIME_AVAILABLE = None
+        OPENAI_RUNTIME_MESSAGE = f"{message}；已跳过预检，正式请求时会继续重试。"
+        return True
+    OPENAI_RUNTIME_AVAILABLE = False
+    return False
 
 
 def clean_text(value: Any) -> str:
@@ -1683,6 +1734,50 @@ def has_effective_query_groups(frame: Dict[str, Any]) -> bool:
     )
 
 
+def query_groups_need_crosslingual_rewrite(frame: Dict[str, Any], user_text: str) -> bool:
+    query_groups = clean_string_list(
+        frame.get("coarse_queries", []) + frame.get("dense_queries", []) + frame.get("exact_queries", []),
+        limit=12,
+    )
+    if not query_groups:
+        return True
+    if any(re.search(r"[A-Za-z]", query) for query in query_groups):
+        return False
+    return bool(re.search(r"[\u4e00-\u9fff]", clean_text(user_text)))
+
+
+def rewrite_query_groups_with_llm(frame: Dict[str, Any], user_text: str) -> Dict[str, List[str]]:
+    normalized = finalize_intent_frame(
+        copy.deepcopy(frame),
+        allow_clarification_fallback=False,
+        allow_query_fallback=False,
+    )
+    raw_payload, _ = structured_chat_completion(
+        messages=[
+            {"role": "system", "content": QUERY_GROUP_REWRITE_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": QUERY_GROUP_REWRITE_USER_PROMPT_TEMPLATE.format(
+                    user_text=clean_text(user_text),
+                    intent_frame_json=json.dumps(normalized, ensure_ascii=False, indent=2),
+                ),
+            },
+        ],
+        schema_name="intent_query_group_rewrite",
+        schema=QUERY_GROUP_REWRITE_SCHEMA,
+        model=OPENAI_MODEL,
+        temperature=0.1,
+        max_tokens=320,
+        timeout=60,
+        api_key=OPENAI_API_KEY,
+    )
+    return {
+        "coarse_queries": clean_string_list(raw_payload.get("coarse_queries", []), limit=5),
+        "dense_queries": clean_string_list(raw_payload.get("dense_queries", []), limit=5),
+        "exact_queries": clean_string_list(raw_payload.get("exact_queries", []), limit=5),
+    }
+
+
 def simplify_chinese_keyword(value: str) -> str:
     text = clean_text(value)
     if not text:
@@ -1902,6 +1997,24 @@ def repair_llm_intent_frame(frame: Dict[str, Any], user_text: str) -> Dict[str, 
             allow_clarification_fallback=True,
             allow_query_fallback=False,
         )
+    if query_groups_need_crosslingual_rewrite(repaired, user_text):
+        try:
+            rewritten_groups = rewrite_query_groups_with_llm(repaired, user_text)
+            repaired["coarse_queries"] = rewritten_groups["coarse_queries"]
+            repaired["dense_queries"] = rewritten_groups["dense_queries"]
+            repaired["exact_queries"] = rewritten_groups["exact_queries"]
+            if query_groups_need_crosslingual_rewrite(repaired, user_text):
+                repaired = ensure_query_groups_from_user_text(repaired, user_text)
+        except Exception as exc:
+            append_error_log(
+                {
+                    "mode": "query_group_rewrite",
+                    "user_text": user_text,
+                    "error": str(exc),
+                    "parser": "llm_repair",
+                }
+            )
+            repaired = ensure_query_groups_from_user_text(repaired, user_text)
     if not has_effective_query_groups(repaired):
         repaired = ensure_query_groups_from_user_text(repaired, user_text)
     return finalize_intent_frame(
@@ -2221,8 +2334,8 @@ def parse_intent_with_llm(
         schema=INTENT_FRAME_SCHEMA,
         model=OPENAI_MODEL,
         temperature=0.1,
-        max_tokens=2200,
-        timeout=90,
+        max_tokens=1200,
+        timeout=60,
         api_key=OPENAI_API_KEY,
     )
     if prior_frame is None:

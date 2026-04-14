@@ -96,5 +96,47 @@
     "error": "LLM IntentFrame missing `search_scene` in mode=initial.",
     "parser": "llm_required",
     "timestamp": "2026-04-08T17:09:30.978087+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
+    "error": "gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T07:51:37.677333+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "检索 RAG 综述论文",
+    "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T11:31:20.629379+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "检索 RAG 综述论文",
+    "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T12:51:55.621640+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "检索 RAG 综述论文",
+    "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T12:52:58.784358+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "检索 RAG 综述论文",
+    "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T12:53:03.623480+00:00"
+  },
+  {
+    "mode": "initial",
+    "user_text": "检索 RAG 综述论文",
+    "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
+    "parser": "llm_required",
+    "timestamp": "2026-04-12T12:54:15.821136+00:00"
   }
 ]

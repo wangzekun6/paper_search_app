@@ -1,222 +1,154 @@
 [
   {
-    "query": "retrieval augmented generation survey",
-    "follow_up_reply": "recent two years, explain why each paper matches",
+    "query": "检索 RAG 综述论文",
+    "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Modality constraint",
-        "Author"
-      ],
+      "query_gap": [],
       "evidence_gap": [],
-      "matched_dimensions": [
-        "Topic match",
-        "Paper type match",
-        "Time preference match"
-      ],
+      "matched_dimensions": [],
       "ambiguous_dimensions": [
-        "Research domain",
-        "Research problem"
+        "模型家族约束",
+        "数据集约束",
+        "指标约束",
+        "标题线索"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions."
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; technical_constraints.modality; document_attributes.author_name"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
   {
-    "query": "recent agent memory papers",
-    "follow_up_reply": null,
+    "query": "最近的 agent memory 论文",
+    "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Modality constraint",
-        "Paper type"
-      ],
-      "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Topic match"
-      ],
-      "matched_dimensions": [
-        "Scene match",
-        "Topic match",
-        "Constraint match"
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
+      "matched_dimensions": [],
       "ambiguous_dimensions": [
-        "Research domain",
-        "Research task",
-        "Research problem",
-        "Time range"
+        "研究问题",
+        "数据集约束",
+        "指标约束",
+        "论文类型",
+        "标题线索",
+        "偏好经典"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Topic match"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; technical_constraints.modality; document_attributes.paper_type"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
   {
-    "query": "papers by authors of MALT",
-    "follow_up_reply": "explain why they are related",
+    "query": "找 MALT 作者的论文",
+    "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
     "intent_gap_report": {
-      "query_gap": [
-        "Research domain",
-        "Research task",
-        "Research problem",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint"
-      ],
-      "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic."
-      ],
-      "matched_dimensions": [
-        "Topic match",
-        "Paper type match"
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
+      "matched_dimensions": [],
       "ambiguous_dimensions": [
-        "Topic keywords",
-        "Method constraint",
-        "Title hint"
+        "研究领域",
+        "研究任务",
+        "模态约束",
+        "作者"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic."
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: research_topic.domain; research_topic.task; research_topic.problem; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
   {
-    "query": "quality estimation with COMET",
-    "follow_up_reply": "prefer recent work",
+    "query": "用 COMET 做质量估计的论文",
+    "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
     "intent_gap_report": {
-      "query_gap": [
-        "Dataset constraint",
-        "Paper type",
-        "Author",
-        "Title hint",
-        "Prefer survey",
-        "Prefer diverse results"
-      ],
+      "query_gap": [],
       "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Scene match"
+        "当前 Top-K 中目标论文类型占比仍偏低。",
+        "论文类型未充分满足",
+        "时间偏好未充分满足"
       ],
       "matched_dimensions": [
-        "Constraint match",
-        "Topic match",
-        "Scene match"
+        "主题匹配",
+        "主意图满足",
+        "约束匹配",
+        "场景匹配"
       ],
       "ambiguous_dimensions": [
-        "Research domain",
-        "Research task",
-        "Research problem",
-        "Topic keywords",
-        "Modality constraint",
-        "Prefer classic"
+        "研究领域",
+        "数据集约束",
+        "指标约束",
+        "模态约束"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Scene match"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。",
+        "当前 Top-K 中目标论文类型占比仍偏低。",
+        "论文类型未充分满足"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.dataset; document_attributes.paper_type; document_attributes.author_name; document_attributes.title_hint; result_preferences.prefer_survey; result_preferences.prefer_diverse"
+        "可补充方法约束、论文类型或更明确的标题/实体线索，以进一步收敛结果。"
       ]
     }
   },
   {
-    "query": "long context survey papers",
-    "follow_up_reply": null,
+    "query": "长上下文论文进展",
+    "follow_up_reply": "时间范围 2023-2026；主题聚焦长上下文建模；论文类型不限（可包含综述）；方法约束不限；模型家族、数据集、指标不限；仅文本模态；作者不限；偏好多样结果否；需要可解释理由否。",
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Modality constraint",
-        "Time range"
-      ],
+      "query_gap": [],
       "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "The requested paper type is still underrepresented in Top-K.",
-        "The user prefers surveys, but no survey appears in the current Top-K.",
-        "Survey preference match",
-        "Paper type match"
+        "当前 Top-K 结果在目标主题上的集中度仍不足。",
+        "用户偏好综述，但当前 Top-K 中未出现综述论文。",
+        "时间偏好未充分满足",
+        "主意图未满足"
       ],
       "matched_dimensions": [
-        "Topic match"
+        "主意图满足",
+        "约束匹配",
+        "论文类型匹配",
+        "场景匹配",
+        "主题匹配"
       ],
       "ambiguous_dimensions": [
-        "Research domain",
-        "Research task",
-        "Research problem",
-        "Topic keywords",
-        "Title hint"
+        "研究领域",
+        "研究任务",
+        "研究问题",
+        "方法约束",
+        "模型家族约束",
+        "数据集约束"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "The requested paper type is still underrepresented in Top-K."
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。",
+        "当前 Top-K 结果在目标主题上的集中度仍不足。",
+        "用户偏好综述，但当前 Top-K 中未出现综述论文。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; technical_constraints.modality; document_attributes.time_range"
+        "可补充方法约束、论文类型或更明确的标题/实体线索，以进一步收敛结果。"
       ]
     }
   },
   {
-    "query": "benchmark for large language models on reasoning",
-    "follow_up_reply": null,
+    "query": "大语言模型推理论文（benchmark 优先）",
+    "follow_up_reply": "时间范围 2023-2026；任务聚焦推理评测；benchmark 优先但不限；方法、模型家族、作者、标题线索不限；指标可包含 Pass@1/GSM8K/MATH；偏好多样结果否；需要可解释理由否。",
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Metric constraint",
-        "Time range",
-        "Author",
-        "Prefer recent",
-        "Prefer classic"
-      ],
-      "evidence_gap": [
-        "Paper type match",
-        "domain_generalization"
-      ],
-      "matched_dimensions": [
-        "Topic match",
-        "Constraint match",
-        "Scene match"
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
+      "matched_dimensions": [],
       "ambiguous_dimensions": [
-        "Dataset constraint",
-        "Modality constraint",
-        "Paper type",
-        "Title hint"
+        "模态约束",
+        "论文类型",
+        "标题线索"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Paper type match",
-        "domain_generalization"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.metric; document_attributes.time_range; document_attributes.author_name; result_preferences.prefer_recent; result_preferences.prefer_classic"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
@@ -224,33 +156,24 @@
     "query": "multimodal reasoning papers",
     "follow_up_reply": "prefer diverse results",
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Time range",
-        "Paper type"
-      ],
-      "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Technical constraints are not covered consistently enough in the current Top-K."
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
       "matched_dimensions": [
-        "Topic match",
-        "Scene match"
+        "主题匹配",
+        "主意图满足",
+        "场景匹配"
       ],
       "ambiguous_dimensions": [
-        "Research problem"
+        "研究领域",
+        "研究问题",
+        "模态约束",
+        "标题线索"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Technical constraints are not covered consistently enough in the current Top-K."
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; document_attributes.time_range; document_attributes.paper_type"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
@@ -258,36 +181,28 @@
     "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
     "follow_up_reply": null,
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Time range",
-        "Author",
-        "Prefer recent"
-      ],
+      "query_gap": [],
       "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "trustworthy RAG focus",
-        "LLM-centric scope"
+        "论文类型未充分满足"
       ],
       "matched_dimensions": [
-        "Constraint match",
-        "Paper type match",
-        "Scene match",
-        "Topic match"
+        "主题匹配",
+        "主意图满足",
+        "约束匹配",
+        "论文类型匹配",
+        "场景匹配"
       ],
       "ambiguous_dimensions": [
-        "Modality constraint"
+        "研究任务",
+        "研究问题",
+        "模态约束"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "trustworthy RAG focus"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。",
+        "论文类型未充分满足"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.dataset; technical_constraints.metric; document_attributes.time_range; document_attributes.author_name; result_preferences.prefer_recent"
+        "可补充方法约束、论文类型或更明确的标题/实体线索，以进一步收敛结果。"
       ]
     }
   },
@@ -295,39 +210,21 @@
     "query": "early exit for quality estimation",
     "follow_up_reply": null,
     "intent_gap_report": {
-      "query_gap": [
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Modality constraint",
-        "Time range",
-        "Paper type"
-      ],
-      "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Topic match",
-        "Constraint match"
-      ],
-      "matched_dimensions": [
-        "Constraint match",
-        "Scene match",
-        "Topic match"
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
+      "matched_dimensions": [],
       "ambiguous_dimensions": [
-        "Research domain",
-        "Research task",
-        "Research problem",
-        "Topic keywords",
-        "Title hint"
+        "研究领域",
+        "研究问题",
+        "方法约束",
+        "论文类型",
+        "标题线索"
       ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Some slots remain ambiguous, so the system avoids overcommitting on those dimensions.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "Topic match"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; technical_constraints.modality; document_attributes.time_range; document_attributes.paper_type"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   },
@@ -335,31 +232,22 @@
     "query": "translation quality estimation explainable reason",
     "follow_up_reply": null,
     "intent_gap_report": {
-      "query_gap": [
-        "Method constraint",
-        "Model family constraint",
-        "Dataset constraint",
-        "Metric constraint",
-        "Time range",
-        "Paper type"
-      ],
-      "evidence_gap": [
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "explainable rationales for QE decisions"
-      ],
+      "query_gap": [],
+      "evidence_gap": [],
       "matched_dimensions": [
-        "Constraint match",
-        "Topic match",
-        "Scene match"
+        "主题匹配",
+        "主意图满足",
+        "场景匹配"
       ],
-      "ambiguous_dimensions": [],
+      "ambiguous_dimensions": [
+        "研究问题",
+        "模态约束"
+      ],
       "why_current_results_are_broad": [
-        "Some intent slots are still missing, so retrieval and reranking must stay broad.",
-        "Top-K results are still not concentrated enough on the requested topic.",
-        "explainable rationales for QE decisions"
+        "部分槽位仍存在歧义，系统会避免在这些维度过度收敛。"
       ],
       "what_next_answer_would_improve": [
-        "Answer the missing slots first: technical_constraints.method; technical_constraints.model_family; technical_constraints.dataset; technical_constraints.metric; document_attributes.time_range; document_attributes.paper_type"
+        "当前结果已较为集中，可直接查看 Top-K。"
       ]
     }
   }

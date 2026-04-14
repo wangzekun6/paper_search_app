@@ -26,6 +26,12 @@ DATASET_NAME = "arxiv_202502_cs_cl"
 DATASET_PARENT_DIR = PROJECT_ROOT / "data"
 DATASET_DIR = DATASET_PARENT_DIR / DATASET_NAME
 DATASET_RELATIVE_PATH = DATASET_DIR.relative_to(PROJECT_ROOT).as_posix()
+FULL_DATASET_LABEL = "arXiv 2017-06 to 2025-02 cs.CL"
+FULL_DATASET_SOURCE_NAME = "201706-202502-cs.CL-Web"
+SUPPORTED_DATASET_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".tar")
+EXTERNAL_DATASET_ARCHIVE_CANDIDATES = (
+    Path(r"D:\papercompassData\201706-202502-cs.CL-Web.tar\201706-202502-cs.CL-Web.tar"),
+)
 
 BUNDLED_DATA_DIR = PROJECT_ROOT / "bundled_data"
 DATASET_TAR_GZ_PATH = BUNDLED_DATA_DIR / f"{DATASET_NAME}.tar.gz"
@@ -42,6 +48,7 @@ DATASET_ARCHIVE_CANDIDATES = (DATASET_TAR_PATH, DATASET_TAR_GZ_PATH)
 SYSTEM_OUTPUT_DIR = PROJECT_ROOT / "system_outputs"
 RUNTIME_DIR = SYSTEM_OUTPUT_DIR / "runtime"
 CACHE_DIR = SYSTEM_OUTPUT_DIR / "cache"
+DATASET_EXTRACT_CACHE_DIR = CACHE_DIR / "dataset_extracts"
 SEMANTIC_CARD_CACHE_DIR = CACHE_DIR / "semantic_cards"
 INTENT_SESSION_CACHE_DIR = CACHE_DIR / "intent_sessions"
 QUERY_MATCH_CACHE_DIR = CACHE_DIR / "query_matches"
@@ -78,6 +85,48 @@ LEGACY_QUERY_PAPER_MATCH_PROMPT_PATH = PROMPTS_DIR / "ranking_explanation.md"
 STANDARD_QUERIES_PATH = DEMOS_DIR / "standard_queries.json"
 DEMO_RUNS_PATH = DEMOS_DIR / "demo_runs.json"
 DEMO_WALKTHROUGH_PATH = DEMOS_DIR / "demo_walkthrough.md"
+
+
+def is_supported_dataset_archive(path: str | Path) -> bool:
+    path_text = str(path).lower()
+    return any(path_text.endswith(suffix) for suffix in SUPPORTED_DATASET_ARCHIVE_SUFFIXES)
+
+
+def _strip_archive_suffix(path: str | Path) -> str:
+    path_text = Path(path).name
+    lowered = path_text.lower()
+    for suffix in SUPPORTED_DATASET_ARCHIVE_SUFFIXES:
+        if lowered.endswith(suffix):
+            return path_text[: -len(suffix)]
+    return Path(path).stem
+
+
+def get_default_dataset_source() -> Path:
+    for candidate in EXTERNAL_DATASET_ARCHIVE_CANDIDATES:
+        if candidate.exists():
+            return candidate.resolve(strict=False)
+    return DATASET_DIR
+
+
+def dataset_source_kind(source_path: str | Path) -> str:
+    path = Path(source_path)
+    if is_supported_dataset_archive(path):
+        return "archive"
+    if path.is_dir():
+        return "directory"
+    return "path"
+
+
+def dataset_source_label(source_path: str | Path) -> str:
+    path = Path(source_path)
+    source_name = _strip_archive_suffix(path) if is_supported_dataset_archive(path) else path.name
+    if source_name == DATASET_NAME:
+        return DATASET_LABEL
+    if FULL_DATASET_SOURCE_NAME in source_name:
+        return FULL_DATASET_LABEL
+    if is_supported_dataset_archive(path):
+        return f"{source_name} (JSON archive)"
+    return source_name
 
 
 # 对外暴露时统一把路径标准化，减少相对路径和大小写差异带来的问题。
@@ -236,10 +285,108 @@ def resolve_dataset_root(data_root: str | Path = DATASET_DIR) -> Path:
     requested = _normalized_path(data_root)
     default_dataset = _normalized_path(DATASET_DIR)
     if requested.exists():
+        if not requested.is_dir() and not is_supported_dataset_archive(requested):
+            raise ValueError(
+                f"Unsupported dataset source: {requested}. "
+                "Only directories and .tar/.tar.gz/.tgz archives are supported."
+            )
         return requested
     if requested == default_dataset:
         return ensure_default_dataset_available()
     raise FileNotFoundError(f"Dataset path not found: {requested}")
+
+
+def _safe_cache_name(value: str, max_length: int = 64) -> str:
+    sanitized = "".join(char if char.isalnum() or char in "._-" else "_" for char in value)
+    sanitized = sanitized.strip("._-")
+    return sanitized[:max_length] or "dataset"
+
+
+def build_dataset_source_fingerprint(source_path: str | Path) -> Dict[str, Any]:
+    path = _normalized_path(source_path)
+    kind = dataset_source_kind(path)
+    payload: Dict[str, Any] = {
+        "fingerprint_version": "dataset_source_v1",
+        "path": str(path),
+        "kind": kind,
+    }
+    if is_supported_dataset_archive(path) or path.is_file():
+        stat = path.stat()
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+        return payload
+    if path.is_dir():
+        json_file_count = 0
+        latest_json_mtime_ns = 0
+        total_json_bytes = 0
+        for json_path in path.rglob("*.json"):
+            if not json_path.is_file():
+                continue
+            stat = json_path.stat()
+            json_file_count += 1
+            latest_json_mtime_ns = max(latest_json_mtime_ns, int(stat.st_mtime_ns))
+            total_json_bytes += int(stat.st_size)
+        payload.update(
+            {
+                "json_file_count": json_file_count,
+                "latest_json_mtime_ns": latest_json_mtime_ns,
+                "total_json_bytes": total_json_bytes,
+            }
+        )
+        return payload
+    raise FileNotFoundError(f"Dataset path not found: {path}")
+
+
+def dataset_source_fingerprint_digest(fingerprint: Dict[str, Any]) -> str:
+    return hashlib.sha1(json.dumps(fingerprint, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def _resolve_cached_dataset_dir(extract_root: Path, source_path: Path) -> Path:
+    expected_root = extract_root / archive_root_name(source_path)
+    if expected_root.is_dir():
+        return expected_root.resolve(strict=False)
+    child_dirs = [child for child in extract_root.iterdir() if child.is_dir()]
+    if len(child_dirs) == 1:
+        return child_dirs[0].resolve(strict=False)
+    return extract_root.resolve(strict=False)
+
+
+def materialize_dataset_source_for_build(source_path: str | Path) -> Path:
+    resolved_source = resolve_dataset_root(source_path)
+    if not is_supported_dataset_archive(resolved_source):
+        return resolved_source
+
+    ensure_system_layout()
+    fingerprint = build_dataset_source_fingerprint(resolved_source)
+    digest = dataset_source_fingerprint_digest(fingerprint)
+    cache_name = f"{_safe_cache_name(_strip_archive_suffix(resolved_source))}_{digest}"
+    extract_root = DATASET_EXTRACT_CACHE_DIR / cache_name
+    ready_marker = extract_root / ".extract_ready.json"
+
+    if extract_root.exists():
+        cached_dataset_dir = _resolve_cached_dataset_dir(extract_root, resolved_source)
+        if ready_marker.exists() and cached_dataset_dir.exists():
+            return cached_dataset_dir
+        if cached_dataset_dir.exists():
+            return cached_dataset_dir
+
+    temp_root = DATASET_EXTRACT_CACHE_DIR / f".{cache_name}_{os.getpid()}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    shutil.rmtree(temp_root, ignore_errors=True)
+    temp_root.mkdir(parents=True, exist_ok=True)
+    try:
+        _safe_extract_tar(resolved_source, temp_root)
+        write_json(
+            temp_root / ".extract_ready.json",
+            {"source_fingerprint": fingerprint, "archive_path": str(resolved_source)},
+        )
+        if extract_root.exists():
+            shutil.rmtree(temp_root, ignore_errors=True)
+        else:
+            temp_root.replace(extract_root)
+    except Exception:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        raise
+
+    return _resolve_cached_dataset_dir(extract_root, resolved_source)
 
 
 # 统一初始化运行目录和缓存目录。
@@ -248,6 +395,7 @@ def ensure_system_layout() -> None:
         SYSTEM_OUTPUT_DIR,
         RUNTIME_DIR,
         CACHE_DIR,
+        DATASET_EXTRACT_CACHE_DIR,
         SEMANTIC_CARD_CACHE_DIR,
         INTENT_SESSION_CACHE_DIR,
         QUERY_MATCH_CACHE_DIR,
@@ -268,6 +416,18 @@ def relative_to_project(path: Path) -> str:
         return str(path)
 
 
+def build_dataset_source_info(source_path: str | Path) -> Dict[str, Any]:
+    path = _normalized_path(source_path)
+    return {
+        "path": str(path),
+        "display_path": relative_to_project(path),
+        "kind": dataset_source_kind(path),
+        "label": dataset_source_label(path),
+        "exists": path.exists(),
+        "json_only": True,
+    }
+
+
 # 读 JSON 时提供安全兜底，避免单个文件损坏影响整个流程。
 def read_json(path: Path, default: Any) -> Any:
     if not path.exists():
@@ -282,6 +442,17 @@ def read_json(path: Path, default: Any) -> Any:
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_active_dataset_info() -> Dict[str, Any]:
+    ensure_system_layout()
+    state = read_json(APP_STATE_PATH, {})
+    last_build = state.get("last_build")
+    if isinstance(last_build, dict):
+        dataset_info = last_build.get("dataset_source")
+        if isinstance(dataset_info, dict):
+            return dataset_info
+    return build_dataset_source_info(get_default_dataset_source())
 
 
 # 轻量运行态信息统一写入 app_state，便于前端恢复状态。

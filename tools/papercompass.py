@@ -12,7 +12,6 @@ import json
 import sys
 from pathlib import Path
 
-from papercompass_core import chain as chain_config
 from papercompass_core.llm import OpenAIAPIError
 from papercompass_core.services import (
     DEFAULT_DATA_ROOT,
@@ -39,6 +38,10 @@ from papercompass_core.services import (
     start_semantic_backfill,
     unsave_paper,
 )
+
+DEFAULT_CHAIN_TOP_K = 5
+DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 40
+DEFAULT_CHAIN_EXPLAIN_LIMIT = 5
 
 
 # 统一以 UTF-8 输出 JSON，尽量避免 Windows 终端出现中文乱码。
@@ -76,6 +79,8 @@ def parse_args() -> argparse.Namespace:
     build_parser.add_argument("--refresh-semantic-cards", action="store_true")
     build_parser.add_argument("--semantic-backfill-mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
     build_parser.add_argument("--skip-semantic-backfill", action="store_true")
+    build_parser.add_argument("--store-raw-json", action="store_true", help="将原始 JSON 写入 raw_papers；默认关闭以加快 build。")
+    build_parser.add_argument("--force-rebuild", action="store_true", help="即使数据源未变化，也强制全量重建数据库。")
 
     search_parser = subparsers.add_parser("search", help="从统一项目索引中检索论文。")
     search_parser.add_argument("query")
@@ -89,6 +94,7 @@ def parse_args() -> argparse.Namespace:
     cards_parser = subparsers.add_parser("cards", help="为项目构建或刷新语义卡片。")
     cards_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
     cards_parser.add_argument("--target-count", type=int, default=DEFAULT_SEMANTIC_TARGET_COUNT)
+    cards_parser.add_argument("--target-ratio", type=float, help="目标覆盖率，取值通常为 0-1；提供后优先于 target-count。")
     cards_parser.add_argument("--pilot-count", type=int, default=DEFAULT_PILOT_COUNT)
     cards_parser.add_argument("--refresh", action="store_true")
     cards_parser.add_argument("--paper-id", help="只生成或刷新单篇论文的语义卡片。")
@@ -97,6 +103,8 @@ def parse_args() -> argparse.Namespace:
     backfill_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
     backfill_parser.add_argument("--mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
     backfill_parser.add_argument("--refresh", action="store_true")
+    backfill_parser.add_argument("--target-count", type=int, help="补全到指定语义卡数量后停止。")
+    backfill_parser.add_argument("--target-ratio", type=float, help="补全到指定覆盖率后停止，取值通常为 0-1。")
     backfill_parser.add_argument("--status", action="store_true")
     backfill_parser.add_argument("--restore-cache-only", action="store_true")
 
@@ -113,17 +121,17 @@ def parse_args() -> argparse.Namespace:
     chain_parser.add_argument("query")
     chain_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
     chain_parser.add_argument("--follow-up", help="可选的聚合澄清回复，会在检索前先合并进意图。")
-    chain_parser.add_argument("--top-k", type=int, default=chain_config.DEFAULT_TOP_K)
-    chain_parser.add_argument("--candidate-pool-size", type=int, default=chain_config.DEFAULT_CANDIDATE_POOL_SIZE)
-    chain_parser.add_argument("--explain-limit", type=int, default=chain_config.DEFAULT_EXPLAIN_LIMIT)
+    chain_parser.add_argument("--top-k", type=int, default=DEFAULT_CHAIN_TOP_K)
+    chain_parser.add_argument("--candidate-pool-size", type=int, default=DEFAULT_CHAIN_CANDIDATE_POOL_SIZE)
+    chain_parser.add_argument("--explain-limit", type=int, default=DEFAULT_CHAIN_EXPLAIN_LIMIT)
 
     chain_build_parser = subparsers.add_parser("chain-build", help="生成核心链路演示产物。")
     chain_build_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
-    chain_build_parser.add_argument("--top-k", type=int, default=chain_config.DEFAULT_TOP_K)
+    chain_build_parser.add_argument("--top-k", type=int, default=DEFAULT_CHAIN_TOP_K)
     chain_build_parser.add_argument(
-        "--candidate-pool-size", type=int, default=chain_config.DEFAULT_CANDIDATE_POOL_SIZE
+        "--candidate-pool-size", type=int, default=DEFAULT_CHAIN_CANDIDATE_POOL_SIZE
     )
-    chain_build_parser.add_argument("--explain-limit", type=int, default=chain_config.DEFAULT_EXPLAIN_LIMIT)
+    chain_build_parser.add_argument("--explain-limit", type=int, default=DEFAULT_CHAIN_EXPLAIN_LIMIT)
 
     history_parser = subparsers.add_parser("history", help="列出最近的检索历史。")
     history_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
@@ -161,6 +169,8 @@ def run_build_command(args: argparse.Namespace) -> None:
         refresh_semantic_cards=args.refresh_semantic_cards,
         auto_semantic_backfill=not args.skip_semantic_backfill,
         semantic_backfill_mode=args.semantic_backfill_mode,
+        store_raw_json=args.store_raw_json,
+        force_rebuild=args.force_rebuild,
     )
     print_json(summary)
 
@@ -188,6 +198,7 @@ def run_cards_command(args: argparse.Namespace) -> None:
     summary = build_semantic_assets(
         db_path=args.db_path,
         target_count=args.target_count,
+        target_ratio=args.target_ratio,
         pilot_count=args.pilot_count,
         refresh=args.refresh,
     )
@@ -202,7 +213,15 @@ def run_semantic_backfill_command(args: argparse.Namespace) -> None:
     if args.restore_cache_only:
         print_json(restore_semantic_card_cache(args.db_path, refresh=args.refresh))
         return
-    print_json(start_semantic_backfill(args.db_path, mode=args.mode, refresh=args.refresh))
+    print_json(
+        start_semantic_backfill(
+            args.db_path,
+            mode=args.mode,
+            refresh=args.refresh,
+            target_count=args.target_count,
+            target_ratio=args.target_ratio,
+        )
+    )
 
 
 # 把自然语言查询解析成结构化意图。

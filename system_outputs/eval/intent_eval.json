@@ -2,7 +2,7 @@
   {
     "query": "retrieval augmented generation",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -171,7 +171,7 @@
   {
     "query": "recent agent memory papers",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -340,7 +340,7 @@
   {
     "query": "找最新的 RAG hallucination mitigation 论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -511,7 +511,7 @@
   {
     "query": "帮我找机器翻译综述",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "survey_lookup",
@@ -681,7 +681,7 @@
   {
     "query": "我想看最近两年 speech-to-speech translation 的进展",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -852,7 +852,7 @@
   {
     "query": "Self-RAG",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
@@ -1019,7 +1019,7 @@
   {
     "query": "Arianna Salazar-Miranda",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "author_trace",
@@ -1186,7 +1186,7 @@
   {
     "query": "Dylan Sam 的论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "author_trace",
@@ -1354,7 +1354,7 @@
   {
     "query": "论文标题里好像有 Riddle Me This",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "author_trace",
@@ -1520,7 +1520,7 @@
   {
     "query": "Find papers about tool use with large language models",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
@@ -1690,7 +1690,7 @@
   {
     "query": "Looking for survey papers on long context in LLMs",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "survey_lookup",
@@ -1861,7 +1861,7 @@
   {
     "query": "recent benchmark for large language models on reasoning",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -2031,7 +2031,7 @@
   {
     "query": "找用 COMET 做 machine translation quality estimation 的论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
@@ -2204,7 +2204,7 @@
   {
     "query": "multimodal feedback papers, dataset 不限",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "",
@@ -2372,7 +2372,7 @@
   {
     "query": "我想找 low-resource language Urdu 的论文，最好近三年",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -2546,7 +2546,7 @@
   {
     "query": "有没有关于 scientific data visualization 的经典论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -2715,7 +2715,7 @@
   {
     "query": "给我多样一些的 agent evaluation papers，并解释为什么推荐",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -2884,7 +2884,7 @@
   {
     "query": "papers by authors of MALT",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "author_trace",
@@ -3051,7 +3051,7 @@
   {
     "query": "Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "specific_paper_lookup",
@@ -3226,7 +3226,7 @@
   {
     "query": "benchmark for large language models",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "topic_exploration",
@@ -3396,7 +3396,7 @@
   {
     "query": "我不确定方法，先看医疗 LLM agent 相关综述",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "survey_lookup",
@@ -3570,7 +3570,7 @@
   {
     "query": "找最近的 graph-based summarization papers, 作者不限",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "recent_progress",
@@ -3738,7 +3738,7 @@
   {
     "query": "我想看用 early exit 做质量估计的论文",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
@@ -3908,7 +3908,7 @@
   {
     "query": "papers on vision-language benchmark with CLIP",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
@@ -4080,7 +4080,7 @@
   {
     "query": "帮我找 translation quality estimation，数据集都可以，但要 explainable reason",
     "parser": "llm",
-    "used_model": "qwen-plus",
+    "used_model": "gpt-5.1",
     "intent_frame": {
       "search_scene": {
         "value": "method_constrained_search",
