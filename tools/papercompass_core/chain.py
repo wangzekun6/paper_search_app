@@ -44,9 +44,9 @@ from .llm import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OpenAIAPIError,
+    ensure_openai_runtime_available,
     is_transient_openai_error_message,
     structured_chat_completion,
-    test_openai_api,
 )
 OUTPUT_DIR = SYSTEM_OUTPUT_DIR
 EXPLANATION_PROMPT_PATH = QUERY_PAPER_MATCH_PROMPT_PATH
@@ -66,21 +66,21 @@ INTENT_SCORE_WEIGHTS = {
     "time_preference_match": 0.06,
     "survey_preference_match": 0.04,
 }
-DEFAULT_CANDIDATE_POOL_SIZE = 40
+DEFAULT_CANDIDATE_POOL_SIZE = 120
 DEFAULT_TOP_K = 5
 DEFAULT_EXPLAIN_LIMIT = 5
 DEFAULT_EXPLANATION_WORKERS = 4
 DEFAULT_QUERY_MATCH_BATCH_SIZE = 8
 DEFAULT_QUERY_MATCH_SECTION_LIMIT = 2
 DEFAULT_QUERY_MATCH_SNIPPET_LIMIT = 2
-DEFAULT_LLM_MATCH_MIN_LIMIT = 8
-INLINE_SEMANTIC_BACKFILL_MAX_PAPERS = 0
+DEFAULT_LLM_MATCH_MIN_LIMIT = 12
+INLINE_SEMANTIC_BACKFILL_MAX_PAPERS = 12
 SYNC_QUERY_MATCH_MAX_UNCACHED = 0
 DEFAULT_LLM_MATCH_SCORE_GAP = 0.06
 DEFAULT_LLM_MATCH_NEIGHBOR_GAP = 0.025
 DEFAULT_STANDARD_QUERY_SEMANTIC_TOP_N = 6
 DEFAULT_STANDARD_QUERY_SEMANTIC_MIN_FREQUENCY = 2
-QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v6"
+QUERY_MATCH_CACHE_VERSION = "query_paper_match_llm_required_v7"
 QUERY_MATCH_PROMPT_VERSION = "query_paper_match_v4"
 OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
 OPENAI_RUNTIME_MESSAGE = ""
@@ -214,72 +214,68 @@ The system needs two aligned outputs:
 1. `clarification_question`: the next natural Chinese question shown to the user.
 2. `follow_up_reply`: a ready-to-submit Chinese reply template that the user can click directly.
 
-Infer the user's real target from the full retrieval context instead of paraphrasing fallback references.
-Treat the original query and latest user follow-up as the strongest signals. Use intent snapshots, gap report,
-result signal summary, and top-result mismatch summaries to choose the single follow-up that would most improve retrieval convergence.
+Infer the user's likely retrieval intent mainly from the original query and the first retrieval context.
+Treat the original query as the strongest signal. Use intent snapshots, gap report, result signal summary,
+and top-result mismatch summaries only to make a mild refinement, not to over-constrain the next turn.
 
 Requirements:
-1. `clarification_question` must be a direct Chinese question that asks for the most valuable missing or conflicting constraints in one turn.
+1. `clarification_question` must be a direct Chinese question that asks for only one next-step preference in one turn.
 2. `follow_up_reply` must be a direct Chinese reply, not a question, and must answer the same clarification focus as `clarification_question`.
 3. Preserve stable confirmed intent. If the latest user reply clearly overrides an earlier preference, follow the latest explicit preference.
-4. Strengthen only the constraints that are still missing, ambiguous, or contradicted by current results.
-5. If paper-type mismatch or main-intent mismatch is dominant, make that constraint explicit and hard.
-6. If the query gap is small but the evidence gap remains large, sharpen the semantic target instead of repeating generic phrases like 不限.
-7. Prefer concrete, user-facing wording such as 研究领域、研究任务、研究问题、论文类型、时间范围、模态，以及是否需要解释推荐理由。
-8. Keep both fields concise, usually within 120 Chinese characters each.
-9. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
-10. Use fallback_question_reference and fallback_draft_reference only as weak backups when richer context is insufficient.
-11. `rationale` must be one short Chinese sentence explaining what uncertainty or mismatch this follow-up is trying to fix.
+4. Keep the refinement light. Prefer at most 1-2 soft refinements such as 时间范围、论文类型偏好、方法侧重点、模态，或是否需要解释推荐理由.
+5. Avoid hard filters unless the user already stated them explicitly. Do not use wording like 必须、仅、只保留、限定为、严格限制、排除、不要.
+6. Prefer soft wording such as 优先、偏向、更关注、如果继续收窄、可补充说明.
+7. If current results already exist, keep the next turn broad enough that a follow-up retrieval is still likely to return papers.
+8. Stay close to the original query intent instead of trying to fully close every gap in one step.
+9. Prefer concrete, user-facing wording such as 研究领域、研究任务、研究问题、论文类型、时间范围、模态，以及是否需要解释推荐理由。
+10. Keep both fields concise, usually within 80 Chinese characters each.
+11. Do not mention internal field names, JSON, schema, ranking score, Top-K, cache, prompt, or model names.
+12. After every retrieval run, always return non-empty `clarification_question` and `follow_up_reply`; do not output empty strings.
+13. `follow_up_reply` must be directly usable as the text inserted into the follow-up input box.
+14. Use fallback_question_reference and fallback_draft_reference only as weak backups when richer context is insufficient.
+15. `rationale` must be one short Chinese sentence explaining what mild intent refinement this follow-up is targeting.
 
 Return JSON only."""
 
 STANDARD_QUERY_SPECS = [
     {
-        "query": "我想找几篇讲 RAG 的综述论文，最好重点看怎么缓解幻觉。",
-        "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
+        "query": "我想找几篇 RAG 方向的代表性论文，最好看看怎么缓解幻觉或提升可信度。",
+        "follow_up_reply": "时间范围 2023-2025；聚焦 RAG 中幻觉缓解、事实一致性或可信性提升；论文类型不限，综述和方法都可以；仅文本模态；请解释每篇为何匹配。",
         "expected_intent_slots": {
-            "search_scene": "survey_lookup",
             "research_topic.task": "retrieval-augmented generation",
             "research_topic.problem": "hallucination mitigation",
-            "document_attributes.paper_type": "survey",
-            "result_preferences.prefer_diverse": "no",
             "result_preferences.need_explainable_reason": "yes",
-        },
-        "expected_clarification_focus": [],
-        "expected_top_result_type": "survey",
-    },
-    {
-        "query": "最近两三年有哪些做 agent memory 的论文？",
-        "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
-        "expected_intent_slots": {
-            "search_scene": "recent_progress",
-            "research_topic.problem": "memory mechanism",
-            "document_attributes.paper_type": "method",
-            "result_preferences.prefer_survey": "no",
-            "result_preferences.prefer_diverse": "yes",
         },
         "expected_clarification_focus": [],
         "expected_top_result_type": "method",
     },
     {
-        "query": "我想看看 MALT 那篇论文的作者后来还发过哪些相关工作。",
-        "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
+        "query": "最近两三年有哪些做 agent memory 的论文？",
+        "follow_up_reply": "时间范围 2023-2025；关注 LLM Agent 的长期记忆或 memory 管理机制；论文类型不限，方法优先；模型家族、数据集、指标不限；仅文本智能体；请解释匹配理由。",
         "expected_intent_slots": {
-            "search_scene": "author_trace",
-            "document_attributes.time_range": "2023-2026",
-            "document_attributes.paper_type": "method",
+            "search_scene": "recent_progress",
+            "research_topic.problem": "memory mechanism",
+            "result_preferences.need_explainable_reason": "yes",
         },
         "expected_clarification_focus": [],
-        "expected_top_result_type": "author_trace",
+        "expected_top_result_type": "method",
     },
     {
-        "query": "有没有用 COMET 做翻译质量估计的论文？",
-        "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
+        "query": "我想系统了解 prompt optimization for large language models 的代表性论文。",
+        "follow_up_reply": "时间范围 2023-2025；聚焦 automatic prompt optimization 或 prompt search；论文类型以方法论文为主，但不排斥综述；数据集和指标不限；请解释每篇为何匹配。",
+        "expected_intent_slots": {
+            "research_topic.task": "prompt optimization",
+        },
+        "expected_clarification_focus": [],
+        "expected_top_result_type": "method",
+    },
+    {
+        "query": "有没有用 COMET 做机器翻译评估或质量估计的论文？",
+        "follow_up_reply": "时间范围 2022-2025；聚焦 COMET 在机器翻译评估或质量估计中的使用；论文类型不限；数据集不限；请说明每篇与 COMET 的关系。",
         "expected_intent_slots": {
             "search_scene": "method_constrained_search",
             "technical_constraints.metric": "COMET",
             "result_preferences.need_explainable_reason": "yes",
-            "result_preferences.prefer_survey": "no",
         },
         "expected_clarification_focus": [],
         "expected_top_result_type": "method",
@@ -320,24 +316,26 @@ STANDARD_QUERY_SPECS = [
         "expected_top_result_type": "method",
     },
     {
-        "query": "I'm trying to find the paper titled \"Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey.\"",
+        "query": "I'm looking for recent papers on trustworthy retrieval-augmented generation for large language models.",
+        "follow_up_reply": "focus on hallucination mitigation or factuality in RAG; methods and surveys are both fine; prefer recent papers",
         "expected_intent_slots": {
-            "search_scene": "specific_paper_lookup",
+            "research_topic.task": "retrieval-augmented generation",
         },
         "expected_clarification_focus": [],
-        "expected_top_result_type": "specific_paper_lookup",
+        "expected_top_result_type": "method",
     },
     {
-        "query": "I'm looking for papers on using early exit for quality estimation.",
+        "query": "I'm looking for papers on speech-to-speech translation.",
+        "follow_up_reply": "focus on recent multilingual or low-latency methods",
         "expected_intent_slots": {
-            "technical_constraints.method": "early exit",
-            "research_topic.task": "quality estimation",
+            "research_topic.task": "speech-to-speech translation",
         },
-        "expected_clarification_focus": ["document_attributes.time_range"],
+        "expected_clarification_focus": [],
         "expected_top_result_type": "method",
     },
     {
         "query": "I want papers on translation quality estimation that can give explainable reasons.",
+        "follow_up_reply": "focus on machine translation quality estimation from 2022 to 2025; methods and benchmarks are both fine; keep explainable reasons",
         "expected_intent_slots": {
             "research_topic.task": "quality estimation",
             "result_preferences.need_explainable_reason": "yes",
@@ -709,16 +707,19 @@ def normalize_query_paper_match_payload(raw_payload: Dict[str, Any]) -> Dict[str
         main_intent_satisfied = False
 
     if not main_intent_satisfied:
-        match_score = min(match_score, 0.78)
-        if has_dimension_marker(unmet_dimensions, "论文类型") or has_dimension_marker(unmet_dimensions, "主意图"):
-            match_score = min(match_score, 0.68)
-        evidence_sufficiency = min(evidence_sufficiency, 0.82)
+        soft_match_cap = 0.84
+        if has_dimension_marker(unmet_dimensions, "主意图"):
+            soft_match_cap = 0.76
+        if has_dimension_marker(unmet_dimensions, "论文类型"):
+            soft_match_cap = min(soft_match_cap, 0.8)
+        match_score = min(match_score, soft_match_cap)
+        evidence_sufficiency = min(evidence_sufficiency, 0.86)
         if not has_dimension_marker(unmet_dimensions, "主意图"):
             unmet_dimensions = clean_string_list(list(unmet_dimensions) + ["主意图未满足"], limit=4)
     else:
         # 对“满足主意图但分数异常偏低”的情况做一致性修复，避免布尔判断和得分冲突。
-        match_score = max(match_score, 0.72)
-        evidence_sufficiency = max(evidence_sufficiency, 0.58)
+        match_score = max(match_score, 0.74)
+        evidence_sufficiency = max(evidence_sufficiency, 0.6)
         unmet_dimensions = [value for value in unmet_dimensions if "主意图" not in clean_text(value)]
 
     return {
@@ -907,7 +908,10 @@ def compute_llm_match_limit(
         len(ranked),
         max(top_k + 2, explain_limit + 1, DEFAULT_LLM_MATCH_MIN_LIMIT),
     )
-    hard_limit = min(len(ranked), max(top_k * 3, explain_limit * 2, 8))
+    hard_limit = min(
+        len(ranked),
+        max(top_k * 5, explain_limit * 3, DEFAULT_LLM_MATCH_MIN_LIMIT + 4),
+    )
     if minimum_limit >= hard_limit:
         return minimum_limit
 
@@ -940,6 +944,7 @@ CANONICAL_SLOT_PATTERNS = {
     "quality_estimation": (
         "quality estimation",
         "translation quality estimation",
+        "qe",
     ),
     "reasoning": (
         "reasoning",
@@ -957,7 +962,71 @@ CANONICAL_SLOT_PATTERNS = {
         "multimodal",
         "multimodal nlp",
     ),
+    "prompt_optimization": (
+        "prompt optimization",
+        "automatic prompt optimization",
+        "automated prompt engineering",
+        "prompt search",
+    ),
+    "speech_to_speech_translation": (
+        "speech-to-speech translation",
+        "speech to speech translation",
+        "s2st",
+    ),
+    "hallucination_mitigation": (
+        "hallucination mitigation",
+        "factuality",
+        "factual consistency",
+        "faithfulness",
+        "trustworthy rag",
+    ),
+    "machine_translation_evaluation": (
+        "machine translation evaluation",
+        "translation evaluation",
+        "mt evaluation",
+        "comet",
+    ),
 }
+
+
+TERM_VARIANT_PATTERNS = {
+    "agent_memory": (
+        "agent memory",
+        "memory mechanism",
+        "memory management",
+        "memory framework",
+        "long-term memory",
+        "long term memory",
+        "memory controller",
+        "memory retrieval",
+        "memory update",
+        "memory stream",
+    ),
+    "prompt_optimization": CANONICAL_SLOT_PATTERNS["prompt_optimization"],
+    "speech_to_speech_translation": CANONICAL_SLOT_PATTERNS["speech_to_speech_translation"],
+    "hallucination_mitigation": CANONICAL_SLOT_PATTERNS["hallucination_mitigation"],
+    "quality_estimation": (
+        *CANONICAL_SLOT_PATTERNS["quality_estimation"],
+        "machine translation quality estimation",
+        "quality prediction",
+        "translation quality assessment",
+    ),
+    "retrieval_augmented_generation": (
+        *CANONICAL_SLOT_PATTERNS["retrieval_augmented_generation"],
+        "agentic rag",
+        "retrieval augmented llm",
+    ),
+}
+
+
+def text_pattern_hit(text: Any, pattern: Any) -> bool:
+    normalized_text = comparable_text(text)
+    normalized_pattern = comparable_text(pattern)
+    if not normalized_text or not normalized_pattern:
+        return False
+    if len(normalized_pattern) <= 4 and normalized_pattern.isalpha():
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(normalized_pattern)}(?![a-z0-9])", normalized_text))
+    return normalized_pattern in normalized_text
 
 
 def canonical_slot_value(value: Any) -> str:
@@ -965,13 +1034,8 @@ def canonical_slot_value(value: Any) -> str:
     if not text:
         return ""
 
-    def _pattern_hit(pattern: str) -> bool:
-        if len(pattern) <= 4 and pattern.isalpha():
-            return bool(re.search(rf"(?<![a-z0-9]){re.escape(pattern)}(?![a-z0-9])", text))
-        return pattern in text
-
     for canonical, patterns in CANONICAL_SLOT_PATTERNS.items():
-        if any(_pattern_hit(pattern) for pattern in patterns):
+        if any(text_pattern_hit(text, pattern) for pattern in patterns):
             return canonical
     return text
 
@@ -984,6 +1048,43 @@ def token_overlap_ratio(left: Any, right: Any) -> float:
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / max(1, min(len(left_tokens), len(right_tokens)))
+
+
+def expand_term_variants(term: Any) -> List[str]:
+    normalized_term = comparable_text(term)
+    if not normalized_term:
+        return []
+    variants = [normalized_term]
+    canonical_term = canonical_slot_value(normalized_term)
+    if canonical_term != normalized_term:
+        variants.extend(CANONICAL_SLOT_PATTERNS.get(canonical_term, ()))
+    for patterns in TERM_VARIANT_PATTERNS.values():
+        if any(text_pattern_hit(normalized_term, pattern) or text_pattern_hit(pattern, normalized_term) for pattern in patterns):
+            variants.extend(patterns)
+    return clean_string_list(variants, limit=12)
+
+
+def term_match_strength(term: Any, text: Any) -> float:
+    normalized_text = comparable_text(text)
+    if not normalized_text:
+        return 0.0
+    best_score = 0.0
+    for variant in expand_term_variants(term):
+        if text_pattern_hit(normalized_text, variant):
+            return 1.0
+        variant_tokens = {
+            token
+            for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]{2,}", comparable_text(variant))
+            if len(token) >= 2
+        }
+        overlap = token_overlap_ratio(variant, normalized_text)
+        if overlap >= 0.999:
+            best_score = max(best_score, 0.9)
+        elif len(variant_tokens) >= 2 and overlap >= 0.75:
+            best_score = max(best_score, 0.72)
+        elif len(variant_tokens) >= 2 and overlap >= 0.5:
+            best_score = max(best_score, 0.45)
+    return clamp_score(best_score)
 
 
 def slot_value_matches_expected(actual: Any, expected: Any) -> bool:
@@ -1045,25 +1146,12 @@ def dense_tokens(text: str) -> List[str]:
 
 def can_use_openai() -> bool:
     global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
-    if OPENAI_RUNTIME_AVAILABLE is True:
-        return OPENAI_RUNTIME_AVAILABLE
-    if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
-        return False
-    if not OPENAI_API_KEY:
-        OPENAI_RUNTIME_AVAILABLE = False
-        OPENAI_RUNTIME_MESSAGE = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
-        return False
-    ok, message = test_openai_api(OPENAI_API_KEY)
+    ok, message = ensure_openai_runtime_available(OPENAI_API_KEY)
     OPENAI_RUNTIME_MESSAGE = message
-    if ok:
-        OPENAI_RUNTIME_AVAILABLE = True
-        return True
-    if is_transient_openai_error_message(message):
+    OPENAI_RUNTIME_AVAILABLE = True if ok else False
+    if OPENAI_RUNTIME_AVAILABLE is False and is_transient_openai_error_message(message):
         OPENAI_RUNTIME_AVAILABLE = None
-        OPENAI_RUNTIME_MESSAGE = f"{message}；已跳过预检，正式请求时会继续重试。"
-        return True
-    OPENAI_RUNTIME_AVAILABLE = False
-    return False
+    return ok
 
 
 def load_error_log() -> List[Dict[str, Any]]:
@@ -1388,7 +1476,7 @@ def ensure_semantic_cards_for_papers(db_path: Path, paper_ids: Sequence[str]) ->
             conn,
             target_ids,
             refresh=False,
-            allow_heuristic_fallback=False,
+            allow_heuristic_fallback=True,
         )
         for item in generation_result.get("error_samples", []):
             semantic.append_error_log(
@@ -1636,15 +1724,17 @@ def fuse_candidate_pool(
 
 
 def compute_match_ratio(terms: Sequence[str], text: str) -> float:
-    normalized_text = clean_text(text).lower()
+    normalized_text = comparable_text(text)
     if not terms:
         return 0.5
-    matched = 0
+    matched = 0.0
+    counted = 0
     for term in terms:
-        normalized_term = clean_text(term).lower()
-        if normalized_term and normalized_term in normalized_text:
-            matched += 1
-    return clamp_score(matched / max(len(terms), 1))
+        if not clean_text(term):
+            continue
+        counted += 1
+        matched += term_match_strength(term, normalized_text)
+    return clamp_score(matched / max(counted, 1))
 
 
 def build_paper_text(row: Any, semantic_card: Dict[str, Any]) -> str:
@@ -1793,11 +1883,10 @@ def build_paper_evidence_pack(
 
     paper_text = build_paper_text(row, semantic_card)
     terms = intent_terms or collect_intent_terms(intent_frame)
-    paper_text_lower = paper_text.lower()
+    paper_text_match_text = comparable_text(paper_text)
     intent_alignment_candidates = []
     for term in terms["topic"] + terms["constraints"]:
-        normalized_term = clean_text(term).lower()
-        if normalized_term and normalized_term in paper_text_lower:
+        if term_match_strength(term, paper_text_match_text) >= 0.72:
             intent_alignment_candidates.append(term)
 
     return {
@@ -1933,6 +2022,46 @@ def keep_ranked_result(intent_frame: Dict[str, Any], rank_result: Dict[str, Any]
             return True
         return match_score >= 0.72
     return match_score >= 0.62
+
+
+def select_relaxed_ranked_items(
+    ranked_items: Sequence[Dict[str, Any]],
+    *,
+    limit: int,
+    excluded_ids: Optional[Sequence[str]] = None,
+) -> List[Dict[str, Any]]:
+    if limit <= 0:
+        return []
+
+    excluded = set(excluded_ids or [])
+    prioritized: List[Dict[str, Any]] = []
+    fallback_pool: List[Dict[str, Any]] = []
+    for item in ranked_items:
+        paper_id = clean_text(item.get("paper_id", ""))
+        if not paper_id or paper_id in excluded:
+            continue
+        query_match = item.get("query_paper_match") or {}
+        match_score = float(query_match.get("match_score", 0.0) or 0.0)
+        if bool(query_match.get("main_intent_satisfied")) or match_score >= 0.38:
+            prioritized.append(item)
+        fallback_pool.append(item)
+
+    selected = prioritized or fallback_pool
+    relaxed_items: List[Dict[str, Any]] = []
+    for item in selected[:limit]:
+        ranking_reasons = clean_string_list(
+            list(item.get("ranking_reasons", [])) + ["当前追问收窄过强时，系统已放宽过滤并保留最接近的候选结果。"],
+            limit=4,
+        )
+        unmet_constraints = clean_string_list(
+            list(item.get("unmet_constraints", [])) + ["当前追问偏强，结果已按相近主题放宽返回。"],
+            limit=4,
+        )
+        item["ranking_reasons"] = ranking_reasons
+        item["unmet_constraints"] = unmet_constraints
+        item["result_filter_mode"] = "relaxed_keep"
+        relaxed_items.append(item)
+    return relaxed_items
 
 
 def paper_type_priority(requested_paper_type: str, scene: str, paper_type: str) -> int:
@@ -2341,8 +2470,6 @@ def build_follow_up_result_signal_summary(
 def build_follow_up_draft_fallback(intent_frame: Dict[str, Any], gap_report: Dict[str, Any]) -> str:
     query_gap = clean_string_list(gap_report.get("query_gap", []), limit=8)
     evidence_gap = clean_string_list(gap_report.get("evidence_gap", []), limit=8)
-    if not query_gap and not evidence_gap and not intent_frame.get("clarification_needed"):
-        return ""
 
     def slot_value(path_name: str) -> str:
         slot = intent.get_slot(intent_frame, intent.SLOT_SPECS[path_name]["path"])
@@ -2357,38 +2484,47 @@ def build_follow_up_draft_fallback(intent_frame: Dict[str, Any], gap_report: Dic
         return localize_follow_up_slot_value(path_name, value)
 
     segments: List[str] = []
+    focus_segments: List[str] = []
     if any("研究领域" in item for item in query_gap):
-        segments.append(f"研究领域是{slot_value('research_topic.domain') or '大语言模型'}")
+        focus_segments.append(f"继续围绕{slot_value('research_topic.domain') or '大语言模型相关方向'}")
     if any("研究任务" in item for item in query_gap):
-        segments.append(f"研究任务是{slot_value('research_topic.task') or 'retrieval-augmented generation'}")
+        focus_segments.append(f"更关注{slot_value('research_topic.task') or '当前任务方向'}")
     if any("研究问题" in item for item in query_gap):
-        segments.append(f"研究问题是{slot_value('research_topic.problem') or '当前查询关注的问题'}")
-    if any(any(token in item for token in ("方法", "模型家族", "数据集", "指标", "模态")) for item in query_gap):
-        segments.append("方法、模型家族、数据集、指标和模态不限")
+        focus_segments.append(f"更关注{slot_value('research_topic.problem') or '当前查询里的核心问题'}")
+    if focus_segments:
+        segments.append("，".join(clean_string_list(focus_segments, limit=2)))
 
     time_range = slot_value("document_attributes.time_range")
     if time_range:
-        segments.append(f"时间范围限定为{time_range}")
+        segments.append(f"时间范围优先{time_range}")
     elif any("时间范围" in item for item in query_gap):
-        segments.append("时间范围限定为最近两年")
+        segments.append("时间范围优先最近三年")
+    elif not query_gap and not evidence_gap:
+        segments.append("时间范围优先最近三年")
 
     paper_type = slot_value("document_attributes.paper_type")
     paper_type_gap = any("论文类型" in item for item in query_gap + evidence_gap)
     if paper_type:
-        if paper_type_gap or slot_value("search_scene") == "survey_lookup":
-            segments.append(f"论文类型必须是{paper_type}")
-        else:
-            segments.append(f"论文类型优先{paper_type}")
+        segments.append(f"论文类型优先{paper_type}")
     elif any("论文类型" in item for item in query_gap):
-        segments.append("论文类型以综述为主")
+        segments.append("论文类型不限，方法和综述都可以")
+    elif not query_gap and not evidence_gap:
+        segments.append("论文类型不限，方法或综述都可以")
+
+    if any(any(token in item for token in ("方法", "模型家族", "数据集", "指标", "模态")) for item in query_gap + evidence_gap):
+        segments.append("方法、模型家族、数据集、指标或模态可按需再收窄")
 
     if slot_value("result_preferences.need_explainable_reason") == "是":
-        segments.append("并解释每篇论文为何匹配")
+        segments.append("并说明每篇论文为何匹配")
+    elif not query_gap and not evidence_gap:
+        segments.append("如合适可说明每篇为何匹配")
 
     if not segments:
-        segments.append("请只保留与当前主题直接相关、满足已有约束的论文")
+        segments.append("围绕原问题继续收窄")
+        segments.append("时间范围优先最近三年")
+        segments.append("论文类型不限，方法和综述都可以")
 
-    return "；".join(clean_string_list(segments, limit=6))
+    return soften_follow_up_draft("；".join(clean_string_list(segments, limit=FOLLOW_UP_MAX_SEGMENTS)), "围绕原问题继续收窄；论文类型不限，方法和综述都可以")
 
 
 def build_follow_up_suggestion_context(ranked_results: Sequence[Dict[str, Any]], limit: int = 5) -> List[Dict[str, Any]]:
@@ -2553,9 +2689,80 @@ def build_follow_up_question_fallback(
     question = clean_text(final_intent_frame.get("clarification_question", ""))
     if not question:
         question = clean_text(initial_intent_frame.get("clarification_question", ""))
+    if not question:
+        question = "如果继续收窄结果，你更想先限定时间范围、论文类型、方法约束，还是是否需要解释推荐理由"
     if question and question[-1] not in "。！？?":
         question += "？"
     return question
+
+
+FOLLOW_UP_SOFT_REPLACEMENTS = (
+    ("只保留", "优先保留"),
+    ("仅保留", "优先保留"),
+    ("只看", "优先看"),
+    ("仅看", "优先看"),
+    ("只返回", "优先返回"),
+    ("只要", "优先"),
+    ("必须是", "优先"),
+    ("必须", "尽量"),
+    ("限定为", "优先"),
+    ("限定在", "优先"),
+    ("限制为", "优先"),
+    ("严格限定", "优先"),
+    ("严格限制", "优先"),
+    ("严格聚焦", "优先聚焦"),
+    ("排除", "可不优先考虑"),
+    ("不要", "可不强求"),
+    ("不考虑", "可不强求"),
+)
+FOLLOW_UP_SOFT_MARKERS = ("优先", "偏向", "更关注", "聚焦", "围绕", "最近", "论文类型", "时间范围", "解释")
+FOLLOW_UP_MAX_SEGMENTS = 3
+
+
+def soften_follow_up_question(question: str, fallback_question: str) -> str:
+    normalized = clean_text(question) or clean_text(fallback_question)
+    for source, target in FOLLOW_UP_SOFT_REPLACEMENTS:
+        normalized = normalized.replace(source, target)
+    normalized = normalized.replace("更想先限定", "更想先补充").replace("请限定", "可补充")
+    normalized = clean_text(normalized.strip("；;。！？? "))
+    return normalized or clean_text(fallback_question)
+
+
+def soften_follow_up_draft(draft: str, fallback_draft: str) -> str:
+    normalized = clean_text(draft)
+    if not normalized:
+        normalized = clean_text(fallback_draft)
+
+    for source, target in FOLLOW_UP_SOFT_REPLACEMENTS:
+        normalized = normalized.replace(source, target)
+    normalized = re.sub(r"论文类型(?:优先)?(?:是|为)\s*", "论文类型优先", normalized)
+    normalized = re.sub(r"论文类型必须\s*", "论文类型优先", normalized)
+    normalized = re.sub(r"时间范围(?:优先)?(?:是|为)\s*", "时间范围优先", normalized)
+    normalized = re.sub(r"时间范围必须\s*", "时间范围优先", normalized)
+    normalized = re.sub(r"仅([^；。!?？；]+?)模态", r"以\1模态为主", normalized)
+    normalized = re.sub(r"只聚焦", "优先聚焦", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+
+    segments: List[str] = []
+    seen: set[str] = set()
+    for raw_segment in re.split(r"[；;。！？?!\n]+", normalized):
+        segment = clean_text(raw_segment.strip("，, "))
+        if not segment:
+            continue
+        segment = re.sub(r"^(并且|并|同时)\s*", "", segment)
+        if segment in seen:
+            continue
+        segments.append(segment)
+        seen.add(segment)
+        if len(segments) >= FOLLOW_UP_MAX_SEGMENTS:
+            break
+
+    if not segments:
+        segments = clean_string_list(re.split(r"[；;。！？?!\n]+", clean_text(fallback_draft)), limit=FOLLOW_UP_MAX_SEGMENTS)
+    softened = "；".join(segments)
+    if softened and not any(marker in softened for marker in FOLLOW_UP_SOFT_MARKERS):
+        softened = f"围绕原问题继续收窄；{softened}"
+    return clean_text(softened.strip("；;。！？? "))
 
 
 def normalize_follow_up_turn_payload(
@@ -2570,15 +2777,17 @@ def normalize_follow_up_turn_payload(
     if not question or not contains_chinese(question):
         question = fallback_question
         used_fallback = used_fallback or bool(question)
+    question = soften_follow_up_question(question, fallback_question)
     if question and question[-1] not in "。！？?":
         question += "？"
     if not draft or not contains_chinese(draft):
         draft = fallback_draft
         used_fallback = used_fallback or bool(draft)
+    draft = soften_follow_up_draft(draft, fallback_draft)
     if draft and draft[-1] not in "。！？?":
         draft += "。"
     if not rationale or not contains_chinese(rationale):
-        rationale = "这条追问聚焦当前最影响结果收敛的缺口。"
+        rationale = "这条追问只做轻度意图细化，避免把范围收得过窄。"
     return question, draft, rationale, used_fallback
 
 
@@ -2793,19 +3002,25 @@ def rerank_candidates(
         for item in shortlisted
         if not evidence_packs[item["paper_id"]].get("semantic_card")
     ]
-    if llm_explain_enabled and missing_semantic_card_ids and 0 < INLINE_SEMANTIC_BACKFILL_MAX_PAPERS >= len(missing_semantic_card_ids):
+    inline_backfill_ids = (
+        missing_semantic_card_ids[:INLINE_SEMANTIC_BACKFILL_MAX_PAPERS]
+        if llm_explain_enabled and INLINE_SEMANTIC_BACKFILL_MAX_PAPERS > 0
+        else []
+    )
+    if inline_backfill_ids:
         if stage_callback:
             stage_callback(
                 {
                     "stage": "semantic_card_backfill",
                     "status": "running",
                     "label": STAGE_LABELS["semantic_card_backfill"],
-                    "paper_count": len(missing_semantic_card_ids),
+                    "paper_count": len(inline_backfill_ids),
+                    "missing_count": len(missing_semantic_card_ids),
                 }
             )
-        refreshed_rows = ensure_semantic_cards_for_papers(db_path, missing_semantic_card_ids)
+        refreshed_rows = ensure_semantic_cards_for_papers(db_path, inline_backfill_ids)
         paper_rows.update(refreshed_rows)
-        for paper_id in missing_semantic_card_ids:
+        for paper_id in inline_backfill_ids:
             item = ranked_by_paper_id.get(paper_id)
             row = paper_rows.get(paper_id)
             if item is None or row is None:
@@ -2865,7 +3080,8 @@ def rerank_candidates(
                     "stage": "semantic_card_backfill",
                     "status": "completed",
                     "label": STAGE_LABELS["semantic_card_backfill"],
-                    "paper_count": len(missing_semantic_card_ids),
+                    "paper_count": len(inline_backfill_ids),
+                    "missing_count": len(missing_semantic_card_ids),
                 }
             )
     elif llm_explain_enabled and missing_semantic_card_ids and stage_callback:
@@ -3073,6 +3289,14 @@ def rerank_candidates(
     )
     filtered_items = [item for item in shortlisted if keep_ranked_result(intent_frame, item)]
     top_items = filtered_items[:top_k]
+    if len(top_items) < top_k and shortlisted:
+        top_items.extend(
+            select_relaxed_ranked_items(
+                shortlisted,
+                limit=top_k - len(top_items),
+                excluded_ids=[item.get("paper_id") for item in top_items],
+            )
+        )
     top_ids = {item["paper_id"] for item in top_items}
     top_missing_section_ids = [
         paper_id
@@ -3660,37 +3884,25 @@ def run_core_chain(
         "used_model": None,
         "used_fallback": False,
     }
-    scene = clean_text(intent.get_slot(final_frame, intent.SLOT_SPECS["search_scene"]["path"]).get("value"))
-    skip_follow_up_for_specific_lookup = (
-        scene in {"author_trace", "specific_paper_lookup"}
-        and any(clean_text(item.get("exact_match_type", "")) in {"author_match", "title_hint"} for item in ranked_results)
+    emit_stage("follow_up_suggestion", "running")
+    stage_start = time.perf_counter()
+    follow_up_suggestion = build_follow_up_suggestion(
+        query,
+        follow_up_reply,
+        initial_frame,
+        final_frame,
+        gap_report,
+        ranked_results,
     )
-    if (
-        not skip_follow_up_for_specific_lookup
-        and (
-            gap_report.get("query_gap")
-            or gap_report.get("evidence_gap")
-            or final_frame.get("clarification_needed")
-        )
-    ):
-        emit_stage("follow_up_suggestion", "running")
-        stage_start = time.perf_counter()
-        follow_up_suggestion = build_follow_up_suggestion(
-            query,
-            follow_up_reply,
-            initial_frame,
-            final_frame,
-            gap_report,
-            ranked_results,
-        )
-        stage_timings["follow_up_suggestion"] = time.perf_counter() - stage_start
-        emit_stage(
-            "follow_up_suggestion",
-            "completed",
-            duration=round(stage_timings["follow_up_suggestion"], 4),
-            generator=follow_up_suggestion.get("generator"),
-            used_model=follow_up_suggestion.get("used_model"),
-        )
+    stage_timings["follow_up_suggestion"] = time.perf_counter() - stage_start
+    emit_stage(
+        "follow_up_suggestion",
+        "completed",
+        duration=round(stage_timings["follow_up_suggestion"], 4),
+        generator=follow_up_suggestion.get("generator"),
+        used_model=follow_up_suggestion.get("used_model"),
+        used_fallback=follow_up_suggestion.get("used_fallback"),
+    )
 
     stage_timings["total"] = time.perf_counter() - started_at
     emit_stage("total", "completed", duration=round(stage_timings["total"], 4))

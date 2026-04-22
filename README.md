@@ -106,7 +106,9 @@ app.py / papercompass.py
 - 结果偏好
 - 是否仍需进一步澄清
 
-上述结构化结果被组织为 `IntentFrame`，为后续候选收口与排序提供依据。
+上述结构化结果被组织为一个统一的“IntentFrame”。IntentFrame 是系统的顶层意图表示，将搜索意图拆分为五个互补的部分：search_scene、research_topic、technical_constraints、document_attributes 和 result_preferences。每个槽位不仅包含提取到的值（value），还维护该值的状态（status）、来源（source）和置信度（confidence）。也就是说，系统不仅记录用户表达了什么，还记录这些信息是否清晰、是否直接来自用户的原始表述或由模型推断、以及该信息的可靠程度。
+
+这种表示既保留了用户的原始表述，又为后续的检索、追问和重排序提供了可判断的信息质量与来源的依据，从而在多轮交互和结果解释中能够更可靠地驱动系统行为。为了适配不同检索目的，系统提供了六类搜索模式以便更明确地表达查询意图：topic_exploration（主题探索）、survey_lookup（综述检索）、recent_progress（最新进展检索）、specific_paper_lookup（具体论文检索）、author_trace（作者追踪）和 method_constrained_search（方法约束检索）。通过在查询理解阶段明确意图类型与槽位质量，系统能有效减少误检、提高重排解释性并支持更有针对性的追问策略。
 
 ### 7.2 多路召回与候选收口
 
@@ -278,7 +280,7 @@ Copy-Item tools\.env.example tools\.env
 ```env
 OPENAI_API_KEY=your_private_key
 OPENAI_API_BASE=http://newapi.hjlyywp.com/v1
-OPENAI_MODEL=gpt-5.1
+OPENAI_MODEL=gpt-5.2
 ```
 
 系统读取配置的优先顺序为：
@@ -506,45 +508,3 @@ python -c "from papercompass_core.llm import OPENAI_API_KEY,test_openai_api; pri
 PaperCompass 以论文检索为应用场景，围绕“LLM 意图理解、多路召回、query-paper match、重排解释与完整论文详情展示”构建了一套较完整的智能检索系统。
 
 对于毕设答辩场景，该项目既能展示算法与系统设计思路，也能展示工程落地能力，包括前端交互、命令行工具、缓存机制、后台任务以及评估产物生成。
-
-## 18. 将代码安全更新到远程仓库 https://github.com/wangzekun6/paper_search_app.git
-
-下面给出一个安全、可审计的工作流，避免直接覆盖远程主分支：
-
-1) 检查并清理工作区
-- 查看状态并提交或暂存未提交的更改：
-  git status
-  git add .
-  git commit -m "save: work in progress"    # 或 git stash
-
-2) 添加目标远程（只需执行一次）
-- 将目标仓库添加为 `upstream`（或改为 `target`）：
-  git remote add upstream https://github.com/wangzekun6/paper_search_app.git
-  git fetch upstream
-
-3) 创建发布分支（避免直接推送到 main）
-- 从当前分支创建新分支：
-  git checkout -b publish-to-upstream
-
-4) 同步并整合目标仓的最新改动
-- 把 upstream 的主分支拉到本地并合并或变基（任选其一）：
-  git fetch upstream
-  git merge upstream/main
-  # 或者（更干净，但需处理冲突）
-  # git rebase upstream/main
-
-5) 解决冲突并本地测试
-- 处理合并/变基冲突，运行项目测试或基本校验，确保一切正常。
-
-6) 推送发布分支到目标仓库
-- 将发布分支推送到 upstream：
-  git push upstream publish-to-upstream
-
-7) 在目标仓库创建 Pull Request（PR）
-- 在 GitHub 页面打开 upstream 仓库，基于 publish-to-upstream 发起 PR，等待代码审查与合并。
-- 若你有直接合并权限并确认安全，可由维护者或你在网页端合并。
-
-安全提示
-- 尽量不要使用 --force push 到远程默认分支（如 main）；若确实需要，请使用 --force-with-lease 并与维护者沟通。
-- 如果需要同步大量历史改动，优先通过 PR 和代码审查流程完成合并。
-- 保留发布分支用于回滚与审计，避免直接在远程 main 上做破坏性操作。

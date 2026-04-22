@@ -312,7 +312,7 @@ def run_semantic_backfill(
                     conn,
                     resolved_target_count,
                     refresh=refresh,
-                    allow_heuristic_fallback=False,
+                    allow_heuristic_fallback=True,
                     progress_callback=progress_callback,
                 )
                 semantic_cards_after = semantic.current_card_count(conn)
@@ -350,7 +350,7 @@ def run_semantic_backfill(
                     conn,
                     missing_ids,
                     refresh=refresh,
-                    allow_heuristic_fallback=False,
+                    allow_heuristic_fallback=True,
                     progress_callback=progress_callback,
                 )
                 missing_after = len(semantic.list_missing_generated_ids(conn))

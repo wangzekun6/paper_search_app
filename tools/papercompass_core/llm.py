@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -20,7 +21,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
-from .config import PROJECT_ROOT
+from .config import PROJECT_ROOT, RUNTIME_DIR
 
 try:
     import winreg
@@ -30,7 +31,7 @@ except ImportError:  # pragma: no cover - Windows-only fallback
 
 # 统一维护当前项目支持的 API 默认值和环境变量搜索顺序。
 DEFAULT_OPENAI_API_BASE = "http://newapi.hjlyywp.com/v1"
-DEFAULT_OPENAI_MODEL_CANDIDATES = ["gpt-5.1", "gpt-5", "gpt-5-codex-mini", "gpt-5-codex"]
+DEFAULT_OPENAI_MODEL_CANDIDATES = ["gpt-5.2", "gpt-5", "gpt-5-codex-mini", "gpt-5-codex", "gpt-5.4"]
 TRANSIENT_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 PRIVATE_ENV_PATHS = (
     PROJECT_ROOT / ".env",
@@ -42,10 +43,91 @@ PRIVATE_ENV_PATHS = (
 
 REQUEST_PROXIES: Optional[Dict[str, str]] = None
 PRIVATE_ENV_VALUES: Optional[Dict[str, str]] = None
+STRUCTURED_OUTPUT_MODE_PATH = RUNTIME_DIR / "llm_structured_output_modes.json"
+STRUCTURED_OUTPUT_MODE_CACHE: Optional[Dict[str, str]] = None
+OPENAI_RUNTIME_AVAILABLE: Optional[bool] = None
+OPENAI_RUNTIME_MESSAGE = ""
+OPENAI_RUNTIME_LOCK = threading.Lock()
+OPENAI_RUNTIME_CONDITION = threading.Condition(OPENAI_RUNTIME_LOCK)
+OPENAI_RUNTIME_PROBE_INFLIGHT = False
 
 
 class OpenAIAPIError(RuntimeError):
     pass
+
+
+def _structured_output_mode_cache_key(model: Optional[str] = None) -> str:
+    resolved_model = str(model or OPENAI_MODEL).strip() or OPENAI_MODEL
+    return f"{OPENAI_API_BASE}::{resolved_model}"
+
+
+def _load_structured_output_mode_cache() -> Dict[str, str]:
+    global STRUCTURED_OUTPUT_MODE_CACHE
+    if STRUCTURED_OUTPUT_MODE_CACHE is not None:
+        return STRUCTURED_OUTPUT_MODE_CACHE
+    try:
+        payload = json.loads(STRUCTURED_OUTPUT_MODE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    STRUCTURED_OUTPUT_MODE_CACHE = {
+        str(key): str(value)
+        for key, value in payload.items()
+        if str(value) in {"json_schema", "json_object"}
+    }
+    return STRUCTURED_OUTPUT_MODE_CACHE
+
+
+def _persist_structured_output_mode_cache(cache: Dict[str, str]) -> None:
+    STRUCTURED_OUTPUT_MODE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STRUCTURED_OUTPUT_MODE_PATH.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def get_structured_output_mode(model: Optional[str] = None) -> str:
+    return _load_structured_output_mode_cache().get(_structured_output_mode_cache_key(model), "")
+
+
+def remember_structured_output_mode(
+    mode: str,
+    *,
+    requested_model: Optional[str] = None,
+    used_model: Optional[str] = None,
+) -> None:
+    if mode not in {"json_schema", "json_object"}:
+        return
+    cache = _load_structured_output_mode_cache()
+    keys = {_structured_output_mode_cache_key(requested_model)}
+    if used_model:
+        keys.add(_structured_output_mode_cache_key(used_model))
+    changed = False
+    for key in keys:
+        if cache.get(key) != mode:
+            cache[key] = mode
+            changed = True
+    if changed:
+        _persist_structured_output_mode_cache(cache)
+
+
+def _set_openai_runtime_state(available: Optional[bool], message: str) -> None:
+    global OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
+    OPENAI_RUNTIME_AVAILABLE = available
+    OPENAI_RUNTIME_MESSAGE = str(message or "").strip()
+
+
+def _resolve_api_key(api_key: str = "") -> str:
+    return str(api_key or OPENAI_API_KEY).strip()
+
+
+def get_cached_openai_runtime_status(api_key: str = "") -> Tuple[Optional[bool], str]:
+    resolved_api_key = _resolve_api_key(api_key)
+    if not resolved_api_key:
+        return False, "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
+    with OPENAI_RUNTIME_LOCK:
+        return OPENAI_RUNTIME_AVAILABLE, OPENAI_RUNTIME_MESSAGE
 
 
 # 读取用户级/系统级 Windows 环境变量，兼容新配置后未重启终端的场景。
@@ -119,16 +201,16 @@ def read_private_env_values() -> Dict[str, str]:
     return merged
 
 
-# 环境变量读取顺序：当前进程 -> 本地私有文件 -> Windows 系统环境变量。
+# 环境变量读取顺序：项目本地私有文件 -> 当前进程 -> Windows 系统环境变量。
 def read_env_value(*names: str, default: str = "") -> str:
     private_values = read_private_env_values()
     for name in names:
-        value = os.environ.get(name)
-        if value and value.strip():
-            return value.strip()
         value = private_values.get(name, "")
         if value:
             return value
+        value = os.environ.get(name)
+        if value and value.strip():
+            return value.strip()
         value = _read_windows_env(name)
         if value:
             return value
@@ -341,6 +423,62 @@ def _retry_backoff_sleep(attempt: int) -> None:
     time.sleep(delay)
 
 
+def _probe_openai_runtime(api_key: str = "", timeout: int = 30) -> Tuple[bool, str]:
+    try:
+        content, used_model, _ = chat_completion(
+            messages=[
+                {"role": "system", "content": "Return exactly OK."},
+                {"role": "user", "content": "Reply with OK."},
+            ],
+            model=OPENAI_MODEL,
+            temperature=0,
+            max_tokens=20,
+            timeout=timeout,
+            api_key=api_key,
+        )
+        return True, f"OpenAI Key 可用，模型 `{used_model}` 返回：{content}"
+    except Exception as exc:
+        return False, f"OpenAI 测试失败: {exc}"
+
+
+def ensure_openai_runtime_available(api_key: str = "", timeout: int = 30) -> Tuple[bool, str]:
+    global OPENAI_RUNTIME_PROBE_INFLIGHT
+
+    resolved_api_key = _resolve_api_key(api_key)
+    if not resolved_api_key:
+        message = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
+        with OPENAI_RUNTIME_LOCK:
+            _set_openai_runtime_state(False, message)
+        return False, message
+
+    with OPENAI_RUNTIME_CONDITION:
+        if OPENAI_RUNTIME_AVAILABLE is True:
+            return True, OPENAI_RUNTIME_MESSAGE
+        if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
+            return False, OPENAI_RUNTIME_MESSAGE
+        if OPENAI_RUNTIME_PROBE_INFLIGHT:
+            while OPENAI_RUNTIME_PROBE_INFLIGHT:
+                OPENAI_RUNTIME_CONDITION.wait()
+            if OPENAI_RUNTIME_AVAILABLE is True:
+                return True, OPENAI_RUNTIME_MESSAGE
+            if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
+                return False, OPENAI_RUNTIME_MESSAGE
+        OPENAI_RUNTIME_PROBE_INFLIGHT = True
+
+    ok, message = _probe_openai_runtime(api_key=resolved_api_key, timeout=timeout)
+    with OPENAI_RUNTIME_CONDITION:
+        if ok:
+            _set_openai_runtime_state(True, message)
+        elif is_transient_openai_error_message(message):
+            _set_openai_runtime_state(None, f"{message}；已跳过预检，正式请求时会继续重试。")
+            ok = True
+        else:
+            _set_openai_runtime_state(False, message)
+        OPENAI_RUNTIME_PROBE_INFLIGHT = False
+        OPENAI_RUNTIME_CONDITION.notify_all()
+        return ok, OPENAI_RUNTIME_MESSAGE
+
+
 # 普通对话接口，供非结构化文本生成场景复用。
 def chat_completion(
     messages: Sequence[Dict[str, str]],
@@ -449,87 +587,110 @@ def structured_chat_completion(
     如果兼容服务不支持，再退回普通 json_object 模式。
     """
 
-    response_format = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": schema_name,
-            "strict": True,
-            "schema": schema,
-        },
-    }
-    try:
-        content, used_model, _ = chat_completion(
-            messages=messages,
-            response_format=response_format,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=timeout,
-            api_key=api_key,
-        )
-        return _load_json_payload(content), used_model
-    except (OpenAIAPIError, json.JSONDecodeError):
-        # 有些兼容 OpenAI 的服务对严格 json_schema 支持不完整，
-        # 这时退回 json_object 模式，尽量保持结构化输出可用。
+    cached_mode = get_structured_output_mode(model)
+    mode_order = [cached_mode] if cached_mode in {"json_schema", "json_object"} else []
+    for fallback_mode in ("json_schema", "json_object"):
+        if fallback_mode not in mode_order:
+            mode_order.append(fallback_mode)
+
+    last_error: Exception | None = None
+    for mode in mode_order:
+        if mode == "json_schema":
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
+            try:
+                content, used_model, _ = chat_completion(
+                    messages=messages,
+                    response_format=response_format,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    api_key=api_key,
+                )
+                payload = _load_json_payload(content)
+                remember_structured_output_mode(
+                    "json_schema",
+                    requested_model=model,
+                    used_model=used_model,
+                )
+                return payload, used_model
+            except (OpenAIAPIError, json.JSONDecodeError) as exc:
+                last_error = exc
+                continue
+
         fallback_messages = list(messages) + [
             {
                 "role": "system",
                 "content": "Return valid JSON only. Do not wrap in markdown fences.",
             }
         ]
-        content, used_model, _ = chat_completion(
-            messages=fallback_messages,
-            response_format={"type": "json_object"},
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=timeout,
-            api_key=api_key,
-        )
         try:
-            return _load_json_payload(content), used_model
-        except json.JSONDecodeError:
-            repair_messages = list(fallback_messages) + [
-                {
-                    "role": "assistant",
-                    "content": content,
-                },
-                {
-                    "role": "system",
-                    "content": "Your previous response was invalid JSON. Return one corrected JSON object only.",
-                },
-            ]
-            repaired_content, repaired_model, _ = chat_completion(
-                messages=repair_messages,
+            content, used_model, _ = chat_completion(
+                messages=fallback_messages,
                 response_format={"type": "json_object"},
                 model=model,
-                temperature=0,
+                temperature=temperature,
                 max_tokens=max_tokens,
                 timeout=timeout,
                 api_key=api_key,
             )
-            return _load_json_payload(repaired_content), repaired_model
+            try:
+                payload = _load_json_payload(content)
+            except json.JSONDecodeError:
+                repair_messages = list(fallback_messages) + [
+                    {
+                        "role": "assistant",
+                        "content": content,
+                    },
+                    {
+                        "role": "system",
+                        "content": "Your previous response was invalid JSON. Return one corrected JSON object only.",
+                    },
+                ]
+                repaired_content, repaired_model, _ = chat_completion(
+                    messages=repair_messages,
+                    response_format={"type": "json_object"},
+                    model=model,
+                    temperature=0,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                    api_key=api_key,
+                )
+                payload = _load_json_payload(repaired_content)
+                used_model = repaired_model
+            remember_structured_output_mode(
+                "json_object",
+                requested_model=model,
+                used_model=used_model,
+            )
+            return payload, used_model
+        except (OpenAIAPIError, json.JSONDecodeError) as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    raise OpenAIAPIError("Structured chat completion failed without a recorded error.")
 
 
 # 对当前模型配置做一次最小连通性探测。
 def test_openai_api(api_key: str = "", timeout: int = 30) -> Tuple[bool, str]:
     """用一次最小请求测试当前 API Key、Base URL 和模型配置是否可用。"""
-
-    try:
-        content, used_model, _ = chat_completion(
-            messages=[
-                {"role": "system", "content": "Return exactly OK."},
-                {"role": "user", "content": "Reply with OK."},
-            ],
-            model=OPENAI_MODEL,
-            temperature=0,
-            max_tokens=20,
-            timeout=timeout,
-            api_key=api_key,
-        )
-        return True, f"OpenAI Key 可用，模型 `{used_model}` 返回：{content}"
-    except Exception as exc:
-        return False, f"OpenAI 测试失败: {exc}"
+    ok, message = _probe_openai_runtime(api_key=api_key, timeout=timeout)
+    with OPENAI_RUNTIME_LOCK:
+        if ok:
+            _set_openai_runtime_state(True, message)
+        elif is_transient_openai_error_message(message):
+            _set_openai_runtime_state(None, f"{message}；已跳过预检，正式请求时会继续重试。")
+        else:
+            _set_openai_runtime_state(False, message)
+    return ok, message
 
 
 # 用大模型把自然语言问题改写成更适合检索的关键词串。

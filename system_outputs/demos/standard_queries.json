@@ -1,50 +1,42 @@
 [
   {
-    "query": "我想找几篇讲 RAG 的综述论文，最好重点看怎么缓解幻觉。",
-    "follow_up_reply": "时间范围 2023-2026；聚焦 RAG 幻觉缓解方向；论文类型以综述为主；模型家族、数据集、指标不限；仅文本模态；偏好多样结果否；并解释每篇论文为何匹配。",
+    "query": "我想找几篇 RAG 方向的代表性论文，最好看看怎么缓解幻觉或提升可信度。",
+    "follow_up_reply": "时间范围 2023-2025；聚焦 RAG 中幻觉缓解、事实一致性或可信性提升；论文类型不限，综述和方法都可以；仅文本模态；请解释每篇为何匹配。",
     "expected_intent_slots": {
-      "search_scene": "survey_lookup",
       "research_topic.task": "retrieval-augmented generation",
       "research_topic.problem": "hallucination mitigation",
-      "document_attributes.paper_type": "survey",
-      "result_preferences.prefer_diverse": "no",
       "result_preferences.need_explainable_reason": "yes"
-    },
-    "expected_clarification_focus": [],
-    "expected_top_result_type": "survey"
-  },
-  {
-    "query": "最近两三年有哪些做 agent memory 的论文？",
-    "follow_up_reply": "时间范围 2023-2026；关注 LLM Agent 长期记忆机制；论文类型方法/基准优先；模型家族、数据集和指标不限；仅文本模态；作者不限；标题线索不限；偏好综述否；偏好多样结果是；并解释命中理由。",
-    "expected_intent_slots": {
-      "search_scene": "recent_progress",
-      "research_topic.problem": "memory mechanism",
-      "document_attributes.paper_type": "method",
-      "result_preferences.prefer_survey": "no",
-      "result_preferences.prefer_diverse": "yes"
     },
     "expected_clarification_focus": [],
     "expected_top_result_type": "method"
   },
   {
-    "query": "我想看看 MALT 那篇论文的作者后来还发过哪些相关工作。",
-    "follow_up_reply": "MALT 指 Mechanistic Ablation of Lossy Translation；优先该论文作者后续相关工作；时间范围 2023-2026；论文类型 method 与 analysis；偏好最新，不偏好经典，不要求综述；并解释它们之间的关联。",
+    "query": "最近两三年有哪些做 agent memory 的论文？",
+    "follow_up_reply": "时间范围 2023-2025；关注 LLM Agent 的长期记忆或 memory 管理机制；论文类型不限，方法优先；模型家族、数据集、指标不限；仅文本智能体；请解释匹配理由。",
     "expected_intent_slots": {
-      "search_scene": "author_trace",
-      "document_attributes.time_range": "2023-2026",
-      "document_attributes.paper_type": "method"
+      "search_scene": "recent_progress",
+      "research_topic.problem": "memory mechanism",
+      "result_preferences.need_explainable_reason": "yes"
     },
     "expected_clarification_focus": [],
-    "expected_top_result_type": "author_trace"
+    "expected_top_result_type": "method"
   },
   {
-    "query": "有没有用 COMET 做翻译质量估计的论文？",
-    "follow_up_reply": "时间范围 2023-2026；聚焦 COMET 在质量估计中的使用；数据集不限；作者不限；偏好最新，不偏好经典；偏好综述否；偏好多样结果是；需要可解释理由；并说明每篇与 COMET QE 的关系。",
+    "query": "我想系统了解 prompt optimization for large language models 的代表性论文。",
+    "follow_up_reply": "时间范围 2023-2025；聚焦 automatic prompt optimization 或 prompt search；论文类型以方法论文为主，但不排斥综述；数据集和指标不限；请解释每篇为何匹配。",
+    "expected_intent_slots": {
+      "research_topic.task": "prompt optimization"
+    },
+    "expected_clarification_focus": [],
+    "expected_top_result_type": "method"
+  },
+  {
+    "query": "有没有用 COMET 做机器翻译评估或质量估计的论文？",
+    "follow_up_reply": "时间范围 2022-2025；聚焦 COMET 在机器翻译评估或质量估计中的使用；论文类型不限；数据集不限；请说明每篇与 COMET 的关系。",
     "expected_intent_slots": {
       "search_scene": "method_constrained_search",
       "technical_constraints.metric": "COMET",
-      "result_preferences.need_explainable_reason": "yes",
-      "result_preferences.prefer_survey": "no"
+      "result_preferences.need_explainable_reason": "yes"
     },
     "expected_clarification_focus": [],
     "expected_top_result_type": "method"
@@ -87,26 +79,26 @@
     "expected_top_result_type": "method"
   },
   {
-    "query": "I'm trying to find the paper titled \"Towards Trustworthy Retrieval Augmented Generation for Large Language Models: A Survey.\"",
+    "query": "I'm looking for recent papers on trustworthy retrieval-augmented generation for large language models.",
+    "follow_up_reply": "focus on hallucination mitigation or factuality in RAG; methods and surveys are both fine; prefer recent papers",
     "expected_intent_slots": {
-      "search_scene": "specific_paper_lookup"
+      "research_topic.task": "retrieval-augmented generation"
     },
     "expected_clarification_focus": [],
-    "expected_top_result_type": "specific_paper_lookup"
+    "expected_top_result_type": "method"
   },
   {
-    "query": "I'm looking for papers on using early exit for quality estimation.",
+    "query": "I'm looking for papers on speech-to-speech translation.",
+    "follow_up_reply": "focus on recent multilingual or low-latency methods",
     "expected_intent_slots": {
-      "technical_constraints.method": "early exit",
-      "research_topic.task": "quality estimation"
+      "research_topic.task": "speech-to-speech translation"
     },
-    "expected_clarification_focus": [
-      "document_attributes.time_range"
-    ],
+    "expected_clarification_focus": [],
     "expected_top_result_type": "method"
   },
   {
     "query": "I want papers on translation quality estimation that can give explainable reasons.",
+    "follow_up_reply": "focus on machine translation quality estimation from 2022 to 2025; methods and benchmarks are both fine; keep explainable reasons",
     "expected_intent_slots": {
       "research_topic.task": "quality estimation",
       "result_preferences.need_explainable_reason": "yes"

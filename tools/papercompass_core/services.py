@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -40,11 +41,15 @@ DEFAULT_DB_PATH = SYSTEM_DB_PATH
 DEFAULT_QUERY_JSON_PATH = retrieval.DEFAULT_QUERY_JSON_PATH
 DEFAULT_QUERY_TEXT_PATH = retrieval.DEFAULT_QUERY_TEXT_PATH
 DEFAULT_SEMANTIC_TARGET_COUNT = 100
+DEFAULT_SEMANTIC_TARGET_RATIO = 0.60
 DEFAULT_PILOT_COUNT = 5
 DEFAULT_SEMANTIC_BACKFILL_MODE = "standard"
 DEFAULT_CHAIN_TOP_K = 5
-DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 40
+DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 120
 DEFAULT_CHAIN_EXPLAIN_LIMIT = 5
+SEMANTIC_GENERATED_STATUSES = ("generated", "generated_fallback")
+PROJECT_QUERY_RUNTIME_WARMUP_LOCK = threading.Lock()
+PROJECT_QUERY_RUNTIME_WARMUP_STATE: Dict[str, Dict[str, Any]] = {}
 
 # 把检索模式映射到具体实现，方便前端和 CLI 统一透传参数。
 SEARCH_MODE_TO_FN: Dict[str, Callable[..., List[Dict[str, Any]]]] = {
@@ -124,6 +129,14 @@ def require_project_database(db_path: str | Path | None = None) -> Path:
     return database_path
 
 
+def _project_runtime_cache_key(database_path: Path) -> str:
+    try:
+        size = database_path.stat().st_size
+    except OSError:
+        size = 0
+    return f"{database_path.resolve(strict=False)}::{size}"
+
+
 # 收藏区和结果卡片都复用这一套作者清洗逻辑。
 def extract_authors_for_display(authors_raw: str) -> List[str]:
     text = " ".join(str(authors_raw or "").split()).strip()
@@ -195,12 +208,58 @@ def load_project_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     if not database_path.exists():
         return stats
 
-    semantic = _semantic_module()
     with retrieval.connect_db(database_path) as conn:
-        stats["semantic_cards"] = semantic.current_card_count(conn)
+        status_placeholders = ", ".join("?" for _ in SEMANTIC_GENERATED_STATUSES)
+        stats["semantic_cards"] = int(
+            conn.execute(
+                f"SELECT COUNT(*) FROM paper_semantic_cards WHERE card_status IN ({status_placeholders})",
+                SEMANTIC_GENERATED_STATUSES,
+            ).fetchone()[0]
+            or 0
+        )
         stats["intent_histories"] = int(conn.execute("SELECT COUNT(*) FROM search_history").fetchone()[0])
         stats["saved_papers"] = int(conn.execute("SELECT COUNT(*) FROM saved_papers").fetchone()[0])
     return stats
+
+
+def _run_project_query_runtime_warmup(database_path: Path, cache_key: str) -> None:
+    summary: Dict[str, Any] = {
+        "db_path": str(database_path),
+        "status": "running",
+        "started_at": time.time(),
+    }
+    try:
+        started_at = time.perf_counter()
+        query_runtime = retrieval.ensure_query_runtime_artifacts(database_path, build_exact_cache=False)
+        summary.update(query_runtime)
+        summary["elapsed"] = round(time.perf_counter() - started_at, 4)
+        summary["status"] = "completed"
+    except Exception as exc:
+        summary["status"] = "failed"
+        summary["error"] = str(exc)
+    with PROJECT_QUERY_RUNTIME_WARMUP_LOCK:
+        PROJECT_QUERY_RUNTIME_WARMUP_STATE[cache_key] = summary
+
+
+def start_project_query_runtime_warmup(db_path: str | Path | None = None) -> Dict[str, Any]:
+    database_path = require_project_database(db_path)
+    cache_key = _project_runtime_cache_key(database_path)
+    with PROJECT_QUERY_RUNTIME_WARMUP_LOCK:
+        cached = PROJECT_QUERY_RUNTIME_WARMUP_STATE.get(cache_key)
+        if isinstance(cached, dict) and cached.get("status") in {"running", "completed"}:
+            return dict(cached)
+        PROJECT_QUERY_RUNTIME_WARMUP_STATE[cache_key] = {
+            "db_path": str(database_path),
+            "status": "running",
+        }
+    thread = threading.Thread(
+        target=_run_project_query_runtime_warmup,
+        args=(database_path, cache_key),
+        daemon=True,
+        name="papercompass-query-runtime-warmup",
+    )
+    thread.start()
+    return {"db_path": str(database_path), "status": "running"}
 
 
 # 从磁盘缓存恢复语义卡片到数据库。
@@ -223,6 +282,8 @@ def start_semantic_backfill(
     target_count: int | None = None,
     target_ratio: float | None = None,
 ) -> Dict[str, Any]:
+    if target_count is None and target_ratio is None:
+        target_ratio = DEFAULT_SEMANTIC_TARGET_RATIO
     database_path = require_project_database(db_path)
     semantic_backfill = _semantic_backfill_module()
     return semantic_backfill.start_background_semantic_backfill(
@@ -255,11 +316,13 @@ def search_project(
 # 生成语义层相关演示、样例和评估产物。
 def build_semantic_assets(
     db_path: str | Path | None = None,
-    target_count: int = DEFAULT_SEMANTIC_TARGET_COUNT,
+    target_count: Optional[int] = None,
     target_ratio: Optional[float] = None,
     pilot_count: int = DEFAULT_PILOT_COUNT,
     refresh: bool = False,
 ) -> Dict[str, Any]:
+    if target_count is None and target_ratio is None:
+        target_ratio = DEFAULT_SEMANTIC_TARGET_RATIO
     database_path = require_project_database(db_path)
     chain = _chain_module()
     semantic = _semantic_module()
@@ -284,7 +347,12 @@ def build_semantic_assets(
 
         semantic.dump_json(semantic.PILOT_OUTPUT_PATH, pilot_cards)
 
-        generated_count = semantic.generate_cards_until_target(conn, resolved_target_count, refresh=refresh)
+        generated_count = semantic.generate_cards_until_target(
+            conn,
+            resolved_target_count,
+            refresh=refresh,
+            allow_heuristic_fallback=True,
+        )
         generated_cards = semantic.load_generated_cards(conn, limit=resolved_target_count)
         semantic.dump_json(semantic.SAMPLE_OUTPUT_PATH, generated_cards)
 
@@ -332,7 +400,8 @@ def build_project(
     top_k: int = 10,
     generate_query_debug: bool = False,
     build_semantic_layer: bool = False,
-    semantic_target_count: int = DEFAULT_SEMANTIC_TARGET_COUNT,
+    semantic_target_count: int | None = None,
+    semantic_target_ratio: float | None = None,
     pilot_count: int = DEFAULT_PILOT_COUNT,
     refresh_semantic_cards: bool = False,
     auto_semantic_backfill: bool = True,
@@ -340,6 +409,8 @@ def build_project(
     store_raw_json: bool = False,
     force_rebuild: bool = False,
 ) -> Dict[str, Any]:
+    if semantic_target_count is None and semantic_target_ratio is None:
+        semantic_target_ratio = DEFAULT_SEMANTIC_TARGET_RATIO
     ensure_system_layout()
     data_root_path = resolve_dataset_root(data_root)
     source_fingerprint = build_dataset_source_fingerprint(data_root_path)
@@ -443,6 +514,7 @@ def build_project(
         semantic_summary = build_semantic_assets(
             db_path=database_path,
             target_count=semantic_target_count,
+            target_ratio=semantic_target_ratio,
             pilot_count=pilot_count,
             refresh=refresh_semantic_cards,
         )
@@ -454,6 +526,8 @@ def build_project(
             database_path,
             mode=semantic_backfill_mode,
             refresh=refresh_semantic_cards,
+            target_count=semantic_target_count,
+            target_ratio=semantic_target_ratio,
         )
 
     payload = {

@@ -17,6 +17,7 @@ from papercompass_core.services import (
     DEFAULT_DATA_ROOT,
     DEFAULT_PILOT_COUNT,
     DEFAULT_SEMANTIC_BACKFILL_MODE,
+    DEFAULT_SEMANTIC_TARGET_RATIO,
     DEFAULT_SEMANTIC_TARGET_COUNT,
     analyze_query_intent,
     build_chain_assets,
@@ -40,7 +41,7 @@ from papercompass_core.services import (
 )
 
 DEFAULT_CHAIN_TOP_K = 5
-DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 40
+DEFAULT_CHAIN_CANDIDATE_POOL_SIZE = 120
 DEFAULT_CHAIN_EXPLAIN_LIMIT = 5
 
 
@@ -74,7 +75,12 @@ def parse_args() -> argparse.Namespace:
         help="构建时额外生成语义卡片。由于需要调用 LLM，速度会更慢。",
     )
     build_parser.add_argument("--skip-semantic-cards", action="store_true", help=argparse.SUPPRESS)
-    build_parser.add_argument("--semantic-target-count", type=int, default=DEFAULT_SEMANTIC_TARGET_COUNT)
+    build_parser.add_argument("--semantic-target-count", type=int)
+    build_parser.add_argument(
+        "--semantic-target-ratio",
+        type=float,
+        help=f"语义卡目标覆盖率；若 count/ratio 都未提供，默认按 {DEFAULT_SEMANTIC_TARGET_RATIO:.0%} 执行。",
+    )
     build_parser.add_argument("--pilot-count", type=int, default=DEFAULT_PILOT_COUNT)
     build_parser.add_argument("--refresh-semantic-cards", action="store_true")
     build_parser.add_argument("--semantic-backfill-mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
@@ -93,8 +99,12 @@ def parse_args() -> argparse.Namespace:
 
     cards_parser = subparsers.add_parser("cards", help="为项目构建或刷新语义卡片。")
     cards_parser.add_argument("--db-path", type=Path, default=get_default_db_path())
-    cards_parser.add_argument("--target-count", type=int, default=DEFAULT_SEMANTIC_TARGET_COUNT)
-    cards_parser.add_argument("--target-ratio", type=float, help="目标覆盖率，取值通常为 0-1；提供后优先于 target-count。")
+    cards_parser.add_argument("--target-count", type=int)
+    cards_parser.add_argument(
+        "--target-ratio",
+        type=float,
+        help=f"目标覆盖率，取值通常为 0-1；若 count/ratio 都未提供，默认按 {DEFAULT_SEMANTIC_TARGET_RATIO:.0%} 执行。",
+    )
     cards_parser.add_argument("--pilot-count", type=int, default=DEFAULT_PILOT_COUNT)
     cards_parser.add_argument("--refresh", action="store_true")
     cards_parser.add_argument("--paper-id", help="只生成或刷新单篇论文的语义卡片。")
@@ -104,7 +114,11 @@ def parse_args() -> argparse.Namespace:
     backfill_parser.add_argument("--mode", choices=["standard", "all"], default=DEFAULT_SEMANTIC_BACKFILL_MODE)
     backfill_parser.add_argument("--refresh", action="store_true")
     backfill_parser.add_argument("--target-count", type=int, help="补全到指定语义卡数量后停止。")
-    backfill_parser.add_argument("--target-ratio", type=float, help="补全到指定覆盖率后停止，取值通常为 0-1。")
+    backfill_parser.add_argument(
+        "--target-ratio",
+        type=float,
+        help=f"补全到指定覆盖率后停止，取值通常为 0-1；若未提供，默认按 {DEFAULT_SEMANTIC_TARGET_RATIO:.0%} 执行。",
+    )
     backfill_parser.add_argument("--status", action="store_true")
     backfill_parser.add_argument("--restore-cache-only", action="store_true")
 
@@ -165,6 +179,7 @@ def run_build_command(args: argparse.Namespace) -> None:
         generate_query_debug=args.with_debug_queries and not args.skip_debug_queries,
         build_semantic_layer=args.with_semantic_cards and not args.skip_semantic_cards,
         semantic_target_count=args.semantic_target_count,
+        semantic_target_ratio=args.semantic_target_ratio,
         pilot_count=args.pilot_count,
         refresh_semantic_cards=args.refresh_semantic_cards,
         auto_semantic_backfill=not args.skip_semantic_backfill,

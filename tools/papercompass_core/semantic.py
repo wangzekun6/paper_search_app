@@ -45,9 +45,9 @@ from .llm import (
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OpenAIAPIError,
+    ensure_openai_runtime_available,
     is_transient_openai_error_message,
     structured_chat_completion,
-    test_openai_api,
 )
 from .models import PaperSemanticCard
 from .retrieval import DEFAULT_DB_PATH, connect_db
@@ -595,26 +595,12 @@ def can_use_openai() -> bool:
         OPENAI_RUNTIME_AVAILABLE = None
         OPENAI_RUNTIME_MESSAGE = "heuristic semantic-card mode forced by environment"
         return True
-    if OPENAI_RUNTIME_AVAILABLE is True:
-        return OPENAI_RUNTIME_AVAILABLE
-    if OPENAI_RUNTIME_AVAILABLE is False and not is_transient_openai_error_message(OPENAI_RUNTIME_MESSAGE):
-        return False
-    if not OPENAI_API_KEY:
-        OPENAI_RUNTIME_AVAILABLE = False
-        OPENAI_RUNTIME_MESSAGE = "未提供 OpenAI API Key。请检查环境变量或 tools/.env 配置。"
-        return False
-
-    ok, message = test_openai_api(api_key=OPENAI_API_KEY, timeout=30)
+    ok, message = ensure_openai_runtime_available(api_key=OPENAI_API_KEY, timeout=30)
     OPENAI_RUNTIME_MESSAGE = message
-    if ok:
-        OPENAI_RUNTIME_AVAILABLE = True
-        return True
-    if is_transient_openai_error_message(message):
+    OPENAI_RUNTIME_AVAILABLE = True if ok else False
+    if OPENAI_RUNTIME_AVAILABLE is False and is_transient_openai_error_message(message):
         OPENAI_RUNTIME_AVAILABLE = None
-        OPENAI_RUNTIME_MESSAGE = f"{message}；已跳过预检，正式请求时会继续重试。"
-        return True
-    OPENAI_RUNTIME_AVAILABLE = False
-    return False
+    return ok
 
 
 def split_sentences(text: str, limit: int = 3) -> List[str]:

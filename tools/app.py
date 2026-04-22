@@ -27,6 +27,7 @@ from papercompass_core.services import (
     project_database_exists,
     run_project_chain_session,
     save_paper,
+    start_project_query_runtime_warmup,
     unsave_paper,
 )
 
@@ -1351,7 +1352,7 @@ def queue_query_state(
     query: str = "",
     follow_up: str = "",
     top_k: int = 5,
-    candidate_pool: int = 40,
+    candidate_pool: int = 120,
     explain_limit: int = 5,
     auto_run: bool = False,
 ) -> None:
@@ -1383,6 +1384,40 @@ def queue_run_request(*, query_override: str = "", follow_up_override: str = "")
     st.session_state["_pending_run_query"] = True
     st.session_state["_pending_run_query_override"] = clean_text(query_override)
     st.session_state["_pending_run_follow_up_override"] = clean_text(follow_up_override)
+
+
+def follow_up_suggestion_signature(payload: Dict[str, Any]) -> str:
+    suggestion_payload = payload.get("follow_up_suggestion", {}) or {}
+    parts = [
+        clean_text(payload.get("query", "")),
+        clean_text(payload.get("follow_up_reply", "")),
+        clean_text(suggestion_payload.get("question", "")),
+        clean_text(suggestion_payload.get("draft", "")),
+        clean_text(suggestion_payload.get("generator", "")),
+        clean_text(suggestion_payload.get("used_model", "")),
+    ]
+    return " | ".join(part for part in parts if part)
+
+
+def sync_generated_follow_up_entry(payload: Dict[str, Any]) -> None:
+    suggestion_payload = payload.get("follow_up_suggestion", {}) or {}
+    suggested_reply = clean_text(suggestion_payload.get("draft", ""))
+    signature = follow_up_suggestion_signature(payload)
+    if not suggested_reply or not signature:
+        return
+    current_value = clean_text(st.session_state.get("gap_follow_up_input", ""))
+    previous_auto_value = clean_text(st.session_state.get("_auto_gap_follow_up_value", ""))
+    previous_signature = clean_text(st.session_state.get("_auto_gap_follow_up_signature", ""))
+    should_apply = not current_value or current_value == previous_auto_value
+    if signature != previous_signature:
+        if should_apply:
+            st.session_state["gap_follow_up_input"] = suggested_reply
+            st.session_state["_auto_gap_follow_up_value"] = suggested_reply
+        st.session_state["_auto_gap_follow_up_signature"] = signature
+        return
+    if should_apply and current_value != suggested_reply:
+        st.session_state["gap_follow_up_input"] = suggested_reply
+        st.session_state["_auto_gap_follow_up_value"] = suggested_reply
 
 
 def build_follow_up_draft(frame: Dict[str, Any], gap_report: Dict[str, Any]) -> str:
@@ -1782,7 +1817,7 @@ def apply_demo_query(item: Dict[str, Any], *, auto_run: bool = True) -> None:
         query=item["query"],
         follow_up=item.get("follow_up_reply", ""),
         top_k=5,
-        candidate_pool=40,
+        candidate_pool=120,
         explain_limit=5,
         auto_run=auto_run,
     )
@@ -1939,7 +1974,7 @@ def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, 
                 [
                     "主链路检索",
                     f"Top-K = {int(st.session_state.get('top_k_input', 5))}",
-                    f"候选池 = {int(st.session_state.get('candidate_pool_input', 40))}",
+                    f"候选池 = {int(st.session_state.get('candidate_pool_input', 120))}",
                 ]
             )
 
@@ -1965,8 +2000,8 @@ def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, 
                 st.number_input(
                     t("candidate_pool_size"),
                     min_value=20,
-                    max_value=120,
-                    value=40,
+                    max_value=200,
+                    value=120,
                     step=10,
                     key="candidate_pool_input",
                 )
@@ -2401,81 +2436,6 @@ def render_intent_panel(frame: Dict[str, Any], follow_up_suggestion: Dict[str, A
             st.json(frame)
 
 
-# Gap 面板解释当前结果为什么还宽，以及下一步补什么最有效。
-def render_gap_panel(
-    gap_report: Dict[str, Any],
-    clarification_needed: bool,
-    frame: Dict[str, Any],
-    follow_up_suggestion: Dict[str, Any] | None = None,
-) -> None:
-    left_col, right_col = st.columns([1.02, 1.15], gap="large")
-    with left_col:
-        with st.container(border=True):
-            render_panel_lead(t("gap_analysis"), "系统说明当前结果为什么还偏宽，以及下一步该补充什么。", "缺口诊断")
-            render_string_list(
-                t("next_answer_helpful"),
-                gap_report.get("what_next_answer_would_improve", []),
-                t("results_usable"),
-            )
-            with st.expander(t("gap_details"), expanded=clarification_needed):
-                render_string_list(t("missing_slots"), gap_report.get("query_gap", []), t("no_missing_slots"))
-                render_string_list(t("evidence_gap"), gap_report.get("evidence_gap", []), t("no_evidence_gap"))
-                render_string_list(
-                    t("matched_dimensions"),
-                    gap_report.get("matched_dimensions", []),
-                    t("no_matched_dimensions"),
-                    formatter=localize_dimension_text,
-                )
-                render_string_list(
-                    t("why_results_broad"),
-                    gap_report.get("why_current_results_are_broad", []),
-                    t("results_focused"),
-                )
-    with right_col:
-        with st.container(border=True):
-            render_panel_lead(t("follow_up_workspace"), "优先补充最影响重排收敛的信息。", "追问补充")
-            if clarification_needed:
-                st.warning(t("clarification_needed_caption"))
-            else:
-                st.caption(t("clarification_optional_caption"))
-            suggestion_payload = follow_up_suggestion or {}
-            clarification_question = resolve_follow_up_question(frame, suggestion_payload)
-            if clarification_question:
-                st.info(clarification_question)
-            suggested_reply = clean_text(suggestion_payload.get("draft", ""))
-            if suggested_reply:
-                source_label = describe_follow_up_source(suggestion_payload)
-                source_label = {"llm": "LLM 生成", "rule": "规则兜底"}.get(generator, "系统建议")
-                st.success(f"{t('suggested_follow_up')}（{source_label}）")
-                st.write(suggested_reply)
-                suggestion_meta = []
-                rationale = clean_text(suggestion_payload.get("rationale", ""))
-                if rationale:
-                    suggestion_meta.append(rationale)
-                used_model = clean_text(suggestion_payload.get("used_model", ""))
-                if used_model:
-                    suggestion_meta.append(f"模型：{used_model}")
-                if suggestion_meta:
-                    st.caption(" | ".join(suggestion_meta))
-                if st.button(t("fill_suggested_follow_up"), key="fill_gap_follow_up", use_container_width=True):
-                    st.session_state["gap_follow_up_input"] = suggested_reply
-            st.markdown(f"**{t('follow_up_entry')}**")
-            st.text_area(
-                t("supplementary_reply"),
-                key="gap_follow_up_input",
-                height=100,
-                placeholder=suggested_reply or t("supplementary_reply_placeholder"),
-            )
-            if st.button(t("continue_search"), key="run_gap_follow_up", use_container_width=True):
-                reply = clean_text(st.session_state.get("gap_follow_up_input", ""))
-                if not reply:
-                    st.warning(t("fill_reply_warning"))
-                else:
-                    queue_run_request(follow_up_override=reply)
-                    st.rerun()
-
-
-# 收藏动作会直接同步到数据库，并刷新页面状态。
 def render_gap_panel(
     gap_report: Dict[str, Any],
     clarification_needed: bool,
@@ -2520,6 +2480,8 @@ def render_gap_panel(
             if suggested_reply:
                 st.success(f"{t('suggested_follow_up')}（{describe_follow_up_source(suggestion_payload)}）")
                 st.write(suggested_reply)
+                if clean_text(st.session_state.get("gap_follow_up_input", "")) == suggested_reply:
+                    st.caption("这条追问语句已自动写入下方入口，可直接继续检索。")
                 suggestion_meta = []
                 rationale = clean_text(suggestion_payload.get("rationale", ""))
                 if rationale:
@@ -2531,6 +2493,7 @@ def render_gap_panel(
                     st.caption(" | ".join(suggestion_meta))
                 if st.button(t("fill_suggested_follow_up"), key="fill_gap_follow_up", use_container_width=True):
                     st.session_state["gap_follow_up_input"] = suggested_reply
+                    st.session_state["_auto_gap_follow_up_value"] = suggested_reply
             st.markdown(f"**{t('follow_up_entry')}**")
             st.text_area(
                 t("supplementary_reply"),
@@ -2750,7 +2713,7 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
     query = clean_text(query_override or st.session_state.get("query_input", ""))
     follow_up = clean_text(follow_up_override or st.session_state.get("follow_up_input", ""))
     top_k = int(st.session_state.get("top_k_input", 5))
-    candidate_pool = int(st.session_state.get("candidate_pool_input", 40))
+    candidate_pool = int(st.session_state.get("candidate_pool_input", 120))
     explain_limit = int(st.session_state.get("explain_limit_input", 5))
     if not query:
         st.warning(t("enter_query_first"))
@@ -2810,6 +2773,7 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
     ):
         payload["result_change_summary"] = build_result_change_summary(previous_payload, payload)
     st.session_state["latest_payload"] = payload
+    sync_generated_follow_up_entry(payload)
 
 
 # 页面总入口：负责状态检查、表单渲染和结果展示。
@@ -2825,6 +2789,7 @@ def main() -> None:
     if not project_database_exists():
         st.error(t("database_missing"))
         return
+    start_project_query_runtime_warmup()
 
     stats = load_project_stats()
     if stats.get("papers", 0) <= 0:
@@ -2859,6 +2824,8 @@ def main() -> None:
         run_query(query_override=pending_query_override, follow_up_override=pending_follow_up_override)
 
     payload = st.session_state.get("latest_payload")
+    if payload:
+        sync_generated_follow_up_entry(payload)
     show_raw_json = render_sidebar(demo_queries, bool(payload))
     render_runtime_workspace(stats, payload, bool(app_state))
 

@@ -74,6 +74,7 @@ HOT_FTS_SIGNATURE_KEY = "paper_search_fts_hot_signature_v2"
 HOT_FTS_VOCAB_TABLE = "paper_search_fts_hot_v2_vocab"
 BUILD_SOURCE_FINGERPRINT_KEY = "build_source_fingerprint_v1"
 BUILD_DESCRIPTOR_KEY = "build_descriptor_v1"
+BUILD_DB_STATS_KEY = "build_db_stats_v1"
 BUILD_DESCRIPTOR_VERSION = "build_layout_v2"
 EXACT_INDEX_CACHE_VERSION = "exact_index_v1"
 EXACT_INDEX_DISK_CACHE_SUBDIR = "exact_indexes"
@@ -134,6 +135,7 @@ DEFAULT_DEBUG_QUERIES = [
     "tool use with large language models",
 ]
 EXACT_SEARCH_CACHE: Dict[str, Dict[str, Any]] = {}
+DATABASE_STATS_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 # 统一解析建库、检索和调试命令所需参数。
@@ -435,6 +437,7 @@ def write_build_runtime_metadata(
     *,
     source_fingerprint: Dict[str, Any],
     store_raw_json: bool = False,
+    db_stats: Optional[Dict[str, Any]] = None,
 ) -> None:
     set_runtime_metadata(
         conn,
@@ -446,6 +449,17 @@ def write_build_runtime_metadata(
         BUILD_DESCRIPTOR_KEY,
         json.dumps(build_descriptor(store_raw_json=store_raw_json), ensure_ascii=False, sort_keys=True),
     )
+    if isinstance(db_stats, dict):
+        static_stats = {
+            "papers": int(db_stats.get("papers", 0) or 0),
+            "sections": int(db_stats.get("sections", 0) or 0),
+            "fts_rows": int(db_stats.get("fts_rows", 0) or 0),
+        }
+        set_runtime_metadata(
+            conn,
+            BUILD_DB_STATS_KEY,
+            json.dumps(static_stats, ensure_ascii=False, sort_keys=True),
+        )
 
 
 def load_build_runtime_metadata(db_path: str | Path | None = None) -> Dict[str, Any]:
@@ -456,10 +470,10 @@ def load_build_runtime_metadata(db_path: str | Path | None = None) -> Dict[str, 
         with connect_db(database_path) as conn:
             source_payload = get_runtime_metadata(conn, BUILD_SOURCE_FINGERPRINT_KEY, "")
             descriptor_payload = get_runtime_metadata(conn, BUILD_DESCRIPTOR_KEY, "")
-            paper_count = int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] or 0)
+            stats_payload = get_runtime_metadata(conn, BUILD_DB_STATS_KEY, "")
     except Exception:
         return {}
-    if not source_payload or paper_count <= 0:
+    if not source_payload:
         return {}
     try:
         source_fingerprint = json.loads(source_payload)
@@ -469,9 +483,23 @@ def load_build_runtime_metadata(db_path: str | Path | None = None) -> Dict[str, 
         descriptor = json.loads(descriptor_payload) if descriptor_payload else {}
     except Exception:
         descriptor = {}
+    try:
+        db_stats = json.loads(stats_payload) if stats_payload else {}
+    except Exception:
+        db_stats = {}
+    paper_count = int(db_stats.get("papers", 0) or 0)
+    if paper_count <= 0:
+        try:
+            with connect_db(database_path) as conn:
+                paper_count = int(conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0] or 0)
+        except Exception:
+            paper_count = 0
+    if paper_count <= 0:
+        return {}
     return {
         "db_path": str(database_path),
         "paper_count": paper_count,
+        "db_stats": db_stats,
         "source_fingerprint": source_fingerprint,
         "build_descriptor": descriptor,
     }
@@ -1049,6 +1077,7 @@ def build_database(
     data_source = resolve_dataset_root(data_root)
     runtime_backup = backup_runtime_tables(db_path)
     EXACT_SEARCH_CACHE.clear()
+    DATABASE_STATS_CACHE.clear()
 
     raw_batch: List[RawPaperRecord] = []
     index_batch: List[PaperIndexRecord] = []
@@ -1088,14 +1117,6 @@ def build_database(
         build_fts_index(conn)
         paper_signature = get_paper_content_signature(conn=conn)
         set_runtime_metadata(conn, PAPER_CONTENT_SIGNATURE_KEY, paper_signature)
-        if source_fingerprint is not None:
-            write_build_runtime_metadata(
-                conn,
-                source_fingerprint=source_fingerprint,
-                store_raw_json=store_raw_json,
-            )
-        build_hot_fts_index(conn, force_rebuild=True)
-        restore_runtime_tables(conn, runtime_backup)
         stats = {
             "papers": conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0],
             "sections": conn.execute("SELECT COUNT(*) FROM paper_sections").fetchone()[0],
@@ -1103,6 +1124,15 @@ def build_database(
         }
         if store_raw_json:
             stats["raw_papers"] = conn.execute("SELECT COUNT(*) FROM raw_papers").fetchone()[0]
+        if source_fingerprint is not None:
+            write_build_runtime_metadata(
+                conn,
+                source_fingerprint=source_fingerprint,
+                store_raw_json=store_raw_json,
+                db_stats=stats,
+            )
+        build_hot_fts_index(conn, force_rebuild=True)
+        restore_runtime_tables(conn, runtime_backup)
     finally:
         conn.close()
 
@@ -1124,12 +1154,39 @@ def load_database_stats(db_path: str | Path | None = None) -> Dict[str, int]:
     if not database_path.exists():
         return {"papers": 0, "sections": 0, "fts_rows": 0}
 
+    # `paper_sections` 和 `paper_search_fts` 在大库上做全表 COUNT(*) 成本很高，
+    # 而这些计数在前端运行期间几乎不变。这里按数据库路径和文件大小做进程内缓存，
+    # 避免 Streamlit 每次交互重跑时都重复扫描百万级记录。
+    cache_key = f"{database_path.resolve(strict=False)}::{database_path.stat().st_size}"
+    cached_stats = DATABASE_STATS_CACHE.get(cache_key)
+    if isinstance(cached_stats, dict):
+        return dict(cached_stats)
+
     with connect_db(database_path) as conn:
-        return {
+        stats_payload = get_runtime_metadata(conn, BUILD_DB_STATS_KEY, "")
+        if stats_payload:
+            try:
+                metadata_stats = json.loads(stats_payload)
+            except Exception:
+                metadata_stats = {}
+            if isinstance(metadata_stats, dict):
+                stats = {
+                    "papers": int(metadata_stats.get("papers", 0) or 0),
+                    "sections": int(metadata_stats.get("sections", 0) or 0),
+                    "fts_rows": int(metadata_stats.get("fts_rows", 0) or 0),
+                }
+                if stats["papers"] > 0:
+                    DATABASE_STATS_CACHE.clear()
+                    DATABASE_STATS_CACHE[cache_key] = dict(stats)
+                    return stats
+        stats = {
             "papers": conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0],
             "sections": conn.execute("SELECT COUNT(*) FROM paper_sections").fetchone()[0],
             "fts_rows": conn.execute("SELECT COUNT(*) FROM paper_search_fts").fetchone()[0],
         }
+    DATABASE_STATS_CACHE.clear()
+    DATABASE_STATS_CACHE[cache_key] = dict(stats)
+    return stats
 
 
 def normalize_match_text(text: str) -> str:
