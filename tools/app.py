@@ -8,6 +8,7 @@ PaperCompass 的 Streamlit 可视化入口。
 from __future__ import annotations
 
 import html
+import re
 from typing import Any, Dict, Iterable, List
 
 import streamlit as st
@@ -31,12 +32,6 @@ from papercompass_core.services import (
     unsave_paper,
 )
 
-
-# 以下映射表负责把系统内部枚举值和字段名翻译成界面展示文案。
-LANGUAGE_OPTIONS = {
-    "zh": "中文",
-    "en": "English",
-}
 
 SEARCH_SCENE_LABELS = {
     "topic_exploration": {"zh": "主题探索", "en": "Topic Exploration"},
@@ -155,7 +150,6 @@ UI_TEXT = {
     "quick_navigation": {"zh": "步骤定位", "en": "Step Navigation"},
     "quick_navigation_hint": {"zh": "搜索完成后，可从这里一键跳到对应区域。", "en": "After a search completes, jump directly to the relevant section from here."},
     "quick_navigation_empty": {"zh": "完成一次检索后，这里会显示完整步骤定位。", "en": "Run one search to see the full section navigation here."},
-    "language_label": {"zh": "界面语言", "en": "Interface Language"},
     "system_status": {"zh": "系统状态", "en": "System Status"},
     "state_file": {"zh": "状态文件：{path}", "en": "State file: {path}"},
     "status_summary": {"zh": "论文={papers} | 章节={sections} | FTS={fts_rows} | 语义卡={semantic_cards} | 历史={intent_histories} | 收藏={saved_papers}", "en": "Papers={papers} | Sections={sections} | FTS={fts_rows} | Semantic Cards={semantic_cards} | History={intent_histories} | Saved={saved_papers}"},
@@ -168,7 +162,7 @@ UI_TEXT = {
     "testing_api": {"zh": "正在测试 API...", "en": "Testing API..."},
     "demo_replay": {"zh": "示例回放", "en": "Demo Replay"},
     "demo_button": {"zh": "示例 {index}", "en": "Demo {index}"},
-    "show_raw_json": {"zh": "显示原始 JSON", "en": "Show Raw JSON"},
+    #"show_raw_json": {"zh": "显示原始 JSON", "en": "Show Raw JSON"},
     "run_process": {"zh": "运行过程", "en": "Process"},
     "run_process_details": {"zh": "查看完整运行过程", "en": "View Full Process"},
     "run_process_collapsed_hint": {"zh": "运行结束后，可在这里展开或收起阶段明细。", "en": "After the run finishes, you can expand or collapse the stage details here."},
@@ -297,6 +291,9 @@ UI_TEXT = {
     "no_saved_papers": {"zh": "当前还没有收藏论文。", "en": "No saved papers yet."},
     "no_history": {"zh": "当前还没有检索历史。", "en": "No search history yet."},
     "follow_up_reply_label": {"zh": "补充回复：{value}", "en": "Follow-up: {value}"},
+    "saved_on_label": {"zh": "收藏于 {value}", "en": "Saved on {value}"},
+    "query_time_label": {"zh": "查询时间 {value}", "en": "Queried at {value}"},
+    "rerun_query": {"zh": "重新检索", "en": "Run Again"},
     "replay": {"zh": "回放", "en": "Replay"},
     "enter_query_first": {"zh": "请先输入自然语言检索问题。", "en": "Enter a natural-language query first."},
     "running_pipeline": {"zh": "正在执行意图解析、检索、query-paper 匹配与重排...", "en": "Running intent parsing, retrieval, query-paper matching, and reranking..."},
@@ -324,6 +321,8 @@ UI_TEXT = {
     "topk_recommendations_caption": {"zh": "默认直接展示摘要、匹配理由和未满足约束，先看重点再决定是否深入。", "en": "Abstracts, match reasons, and unmet constraints are visible by default so you can scan the essentials first."},
     "paper_details": {"zh": "论文详情", "en": "Paper Details"},
     "paper_details_caption": {"zh": "这一节保留完整摘要、命中证据、语义卡和 query-paper match 细节。", "en": "This section keeps the full abstract, evidence, semantic cards, and query-paper match details."},
+    "paper_link_label": {"zh": "论文链接", "en": "Paper Link"},
+    "paper_link_missing": {"zh": "当前论文暂未解析出可跳转链接。", "en": "No external paper link is available for this result yet."},
     "management_workspace": {"zh": "收藏 / 历史 / 示例", "en": "Saved / History / Demos"},
     "management_workspace_caption": {"zh": "收藏、历史和示例统一放到主线底部，避免打断当前检索。", "en": "Saved items, history, and demos live at the bottom so they do not interrupt the current retrieval flow."},
     "query_not_run_yet": {"zh": "运行一次查询后，这里会展示完整阶段事件和运行摘要。", "en": "Run a query once to see the full stage events and runtime summary here."},
@@ -362,16 +361,10 @@ UI_TEXT.update(
     }
 )
 
-STEP_SECTION_ANCHORS = {
-    1: "step-1-search-input",
-    2: "step-2-runtime-workbench",
-    3: "step-3-system-understanding",
-    4: "step-4-follow-up",
-    5: "step-5-topk-results",
-    6: "step-6-paper-details",
-    7: "step-7-management",
-}
 LIVE_PROCESS_SCROLL_ANCHOR = "live-process-top-animation"
+SEARCH_WORKSPACE_SCROLL_ANCHOR = "pc-search-workspace"
+RESULT_STREAM_SCROLL_ANCHOR = "pc-result-stream"
+DETAIL_PANEL_SCROLL_ANCHOR = "pc-detail-panel"
 
 
 # 统一清理字符串，避免界面上出现多余空白或 `None`。
@@ -388,9 +381,12 @@ def truncate_text(value: Any, limit: int = 320) -> str:
     return text[: max(limit - 3, 0)].rstrip() + "..."
 
 
-# 当前界面语言统一从 session_state 中读取。
+def format_datetime_text(value: Any) -> str:
+    return clean_text(value).replace("T", " ")
+
+
 def current_locale() -> str:
-    return st.session_state.get("ui_language", "zh")
+    return "zh"
 
 
 # 国际化文案读取入口，所有界面文案都优先通过这里获取。
@@ -459,8 +455,8 @@ def inject_runtime_process_styles() -> None:
 }
 
 .block-container {
-    max-width: 1450px;
-    padding-top: 1.3rem;
+    max-width: 1560px;
+    padding-top: 1.15rem;
     padding-bottom: 4rem;
 }
 
@@ -476,7 +472,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid rgba(201, 216, 241, 0.90);
     background: var(--pc-surface);
     box-shadow: var(--pc-shadow);
-    padding: 0.25rem 0.35rem;
+    padding: 0.42rem 0.55rem;
 }
 
 div[data-testid="stMetric"] {
@@ -801,40 +797,6 @@ details[data-testid="stExpander"] summary {
     margin-bottom: 0.7rem;
 }
 
-.pc-section-heading {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    margin: 1.2rem 0 0.75rem;
-}
-
-.pc-section-step {
-    flex: 0 0 auto;
-    border-radius: 18px;
-    background: linear-gradient(180deg, #2f5fa7 0%, #3b73c4 100%);
-    color: white;
-    font-weight: 900;
-    font-size: 0.95rem;
-    padding: 8px 12px;
-    min-width: 46px;
-    text-align: center;
-    box-shadow: 0 10px 24px rgba(47, 95, 167, 0.18);
-}
-
-.pc-section-title {
-    font-size: 1.28rem;
-    font-weight: 900;
-    color: var(--pc-text);
-    line-height: 1.3;
-}
-
-.pc-section-caption {
-    font-size: 0.92rem;
-    color: var(--pc-muted);
-    line-height: 1.6;
-    margin-top: 4px;
-}
-
 .pc-note {
     color: var(--pc-muted);
     font-size: 0.9rem;
@@ -858,6 +820,166 @@ details[data-testid="stExpander"] summary {
     margin: 0.15rem 0 0.55rem;
 }
 
+.pc-library-title {
+    font-size: 1.08rem;
+    line-height: 1.58;
+    font-weight: 800;
+    color: var(--pc-text);
+    margin: 0.1rem 0 0.15rem;
+}
+
+.pc-library-title a {
+    color: var(--pc-text);
+    text-decoration: none;
+}
+
+.pc-library-title a:hover {
+    color: var(--pc-blue);
+    text-decoration: underline;
+}
+
+.pc-library-link {
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 0.05rem 0 0.35rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pc-library-link a {
+    color: var(--pc-blue);
+    text-decoration: none;
+}
+
+.pc-library-link a:hover {
+    text-decoration: underline;
+}
+
+.pc-library-meta,
+.pc-library-submeta {
+    color: var(--pc-muted);
+    font-size: 0.86rem;
+    line-height: 1.6;
+}
+
+.pc-library-submeta {
+    margin-top: 0.08rem;
+}
+
+.pc-history-stamp {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 5px 10px;
+    background: #eef4ff;
+    color: var(--pc-blue);
+    font-size: 0.78rem;
+    font-weight: 800;
+    margin-bottom: 0.4rem;
+}
+
+.pc-history-query {
+    color: var(--pc-text);
+    font-size: 1rem;
+    line-height: 1.6;
+    font-weight: 800;
+    margin: 0 0 0.25rem;
+}
+
+.pc-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 0.45rem 0 0.82rem;
+}
+
+.pc-summary-card {
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: linear-gradient(180deg, #fbfdff 0%, #f6faff 100%);
+    padding: 13px 16px;
+}
+
+.pc-summary-label {
+    color: var(--pc-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.pc-summary-value {
+    color: var(--pc-text);
+    font-size: 1.12rem;
+    line-height: 1.2;
+    font-weight: 900;
+}
+
+.pc-context-block {
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,250,255,0.98));
+    padding: 14px 16px;
+    margin-bottom: 0.82rem;
+}
+
+.pc-context-label {
+    color: var(--pc-muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    margin-bottom: 0.38rem;
+}
+
+.pc-context-value {
+    color: var(--pc-text);
+    font-size: 0.95rem;
+    line-height: 1.7;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pc-result-snippet {
+    margin: 0.45rem 0 0.18rem;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(201, 216, 241, 0.86);
+    background: #f8fbff;
+    color: var(--pc-muted);
+    font-size: 0.86rem;
+    line-height: 1.7;
+}
+
+.pc-result-snippet strong {
+    color: var(--pc-text);
+}
+
+div[data-testid="column"]:has(#pc-detail-panel) {
+    align-self: flex-start;
+}
+
+div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"] {
+    position: sticky;
+    top: 0.95rem;
+    max-height: calc(100vh - 1.2rem);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-right: 0.18rem;
+}
+
+div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar {
+    width: 8px;
+}
+
+div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-thumb {
+    background: rgba(159, 183, 221, 0.92);
+    border-radius: 999px;
+}
+
+div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"]::-webkit-scrollbar-track {
+    background: rgba(234, 242, 255, 0.88);
+    border-radius: 999px;
+}
+
 @media (max-width: 960px) {
     .pc-hero {
         flex-direction: column;
@@ -865,6 +987,12 @@ details[data-testid="stExpander"] summary {
     .pc-hero-meta {
         width: 100%;
         min-width: 0;
+    }
+    div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"] {
+        position: static;
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
     }
 }
 
@@ -1386,6 +1514,25 @@ def queue_run_request(*, query_override: str = "", follow_up_override: str = "")
     st.session_state["_pending_run_follow_up_override"] = clean_text(follow_up_override)
 
 
+def queue_workspace_jump(
+    anchor_id: str,
+    *,
+    open_intent: bool = False,
+    open_runtime: bool = False,
+    management_view: str = "",
+) -> None:
+    target_id = clean_text(anchor_id)
+    if not target_id:
+        return
+    if open_intent:
+        st.session_state["_open_intent_workspace"] = True
+    if open_runtime:
+        st.session_state["_open_runtime_workspace"] = True
+    if management_view:
+        st.session_state["management_view"] = clean_text(management_view)
+    st.session_state["_pending_anchor_scroll"] = target_id
+
+
 def follow_up_suggestion_signature(payload: Dict[str, Any]) -> str:
     suggestion_payload = payload.get("follow_up_suggestion", {}) or {}
     parts = [
@@ -1458,32 +1605,6 @@ def build_follow_up_draft(frame: Dict[str, Any], gap_report: Dict[str, Any]) -> 
         segments.append("并解释每篇论文为何匹配")
 
     return "；".join(segment for segment in segments if clean_text(segment))
-
-
-def format_stage_event_text(event: Dict[str, Any]) -> str:
-    stage = clean_text(event.get("stage"))
-    label = localize_stage_label(stage, clean_text(event.get("label") or stage))
-    status = clean_text(event.get("status"))
-    prefix = t("stage_running") if status == "running" else t("stage_completed")
-    parts = [f"{prefix}：{label}"]
-    if event.get("generator"):
-        generator_label = {"llm": "LLM", "rule": "规则兜底"}.get(clean_text(event["generator"]), clean_text(event["generator"]))
-        parts.append(f"生成={generator_label}")
-    if event.get("used_model"):
-        parts.append(f"模型={event['used_model']}")
-    if event.get("result_count") is not None:
-        parts.append(f"结果={event['result_count']}")
-    if event.get("candidate_pool_size") is not None:
-        parts.append(f"候选池={event['candidate_pool_size']}")
-    if event.get("paper_count") is not None:
-        parts.append(f"论文={event['paper_count']}")
-    if event.get("cached_count") is not None:
-        parts.append(f"缓存={event['cached_count']}")
-    if event.get("llm_count") is not None:
-        parts.append(f"LLM={event['llm_count']}")
-    if event.get("duration") is not None and status == "completed":
-        parts.append(f"{event['duration']:.4f}s")
-    return " | ".join(parts)
 
 
 def summarize_stage_events(events: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1714,6 +1835,358 @@ def describe_result_source(result: Dict[str, Any]) -> str:
     return parser_labels.get(parser_name, parser_name or "-")
 
 
+def build_paper_external_url(result: Dict[str, Any]) -> str:
+    direct_link_fields = ("paper_url", "external_url", "url", "source_url", "pdf_url")
+    for field in direct_link_fields:
+        value = clean_text(result.get(field, ""))
+        if value.startswith(("https://", "http://")):
+            return value
+
+    doi = clean_text(result.get("doi", ""))
+    if doi:
+        normalized_doi = doi.replace("https://doi.org/", "").replace("http://doi.org/", "").replace("doi:", "").strip()
+        if normalized_doi:
+            return f"https://doi.org/{normalized_doi}"
+
+    paper_id = clean_text(result.get("paper_id", ""))
+    if not paper_id:
+        return ""
+
+    source_path = clean_text(result.get("source_path", ""))
+    dataset_label = clean_text((get_active_dataset_info() or {}).get("label", ""))
+    arxiv_patterns = (
+        r"^\d{4}\.\d{4,5}(?:v\d+)?$",
+        r"^[a-z\-]+(?:\.[a-z\-]+)?/\d{7}(?:v\d+)?$",
+    )
+    is_arxiv_like = (
+        "arxiv" in source_path.lower()
+        or "arxiv" in dataset_label.lower()
+        or any(re.fullmatch(pattern, paper_id, flags=re.IGNORECASE) for pattern in arxiv_patterns)
+    )
+    if is_arxiv_like:
+        return f"https://arxiv.org/abs/{paper_id}"
+    return ""
+
+
+def render_paper_external_link(result: Dict[str, Any]) -> None:
+    paper_url = build_paper_external_url(result)
+    if not paper_url:
+        st.caption(t("paper_link_missing"))
+        return
+    safe_url = html.escape(paper_url, quote=True)
+    st.markdown(
+        f"**{t('paper_link_label')}** "
+        f"<a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{html.escape(paper_url)}</a>",
+        unsafe_allow_html=True,
+    )
+
+
+def normalize_text_list(value: Any, *, limit: int | None = None) -> List[str]:
+    if isinstance(value, (list, tuple)):
+        raw_items = list(value)
+    else:
+        raw_items = [value]
+    deduped: List[str] = []
+    seen = set()
+    for item in raw_items:
+        text = clean_text(item)
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(text)
+        if limit is not None and len(deduped) >= limit:
+            break
+    return deduped
+
+
+def split_history_query_text(query_text: Any) -> tuple[str, str]:
+    raw_text = str(query_text or "")
+    query_lines: List[str] = []
+    follow_up_lines: List[str] = []
+    in_follow_up = False
+    for raw_line in raw_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.lower().startswith("follow-up:"):
+            in_follow_up = True
+            tail = line.split(":", 1)[1].strip()
+            if tail:
+                follow_up_lines.append(tail)
+            continue
+        if in_follow_up:
+            follow_up_lines.append(line)
+        else:
+            query_lines.append(line)
+
+    query = clean_text(" ".join(query_lines))
+    follow_up = clean_text(" ".join(follow_up_lines))
+    if query or follow_up:
+        return query, follow_up
+    return clean_text(query_text), ""
+
+
+def build_intent_brief_tags(frame: Dict[str, Any], limit: int = 8) -> List[str]:
+    tags: List[str] = []
+
+    def append_tag(text: Any) -> None:
+        normalized = clean_text(text)
+        if not normalized or normalized == "-":
+            return
+        tags.append(normalized)
+
+    append_tag(slot_display(frame.get("search_scene", {}), "search_scene"))
+
+    keyword_value = ((frame.get("research_topic", {}) or {}).get("keywords", {}) or {}).get("value")
+    for item in normalize_text_list(keyword_value, limit=3):
+        append_tag(item)
+
+    document_attributes = frame.get("document_attributes", {}) or {}
+    time_range = slot_display(document_attributes.get("time_range", {}), "document_attributes.time_range")
+    if time_range != "-":
+        append_tag(f"时间：{time_range}")
+    paper_type = slot_display(document_attributes.get("paper_type", {}), "document_attributes.paper_type")
+    if paper_type != "-":
+        append_tag(f"类型：{paper_type}")
+
+    technical_constraints = frame.get("technical_constraints", {}) or {}
+    for field_name, label in [
+        ("method", "方法"),
+        ("model_family", "模型"),
+        ("dataset", "数据集"),
+        ("metric", "指标"),
+        ("modality", "模态"),
+    ]:
+        value = slot_display(technical_constraints.get(field_name, {}), f"technical_constraints.{field_name}")
+        if value != "-":
+            append_tag(f"{label}：{value}")
+
+    preferences = frame.get("result_preferences", {}) or {}
+    for field_name, label in [
+        ("prefer_recent", "偏好最新"),
+        ("prefer_classic", "偏好经典"),
+        ("prefer_survey", "偏好综述"),
+        ("prefer_diverse", "偏好多样"),
+    ]:
+        if clean_text((preferences.get(field_name, {}) or {}).get("value")) == "yes":
+            append_tag(label)
+
+    deduped: List[str] = []
+    seen = set()
+    for item in tags:
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(item)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def build_history_intent_tags(history_item: Dict[str, Any], limit: int = 4) -> List[str]:
+    frame = history_item.get("intent_frame", {}) or {}
+    tags: List[str] = []
+
+    scene = slot_display(frame.get("search_scene", {}), "search_scene")
+    if scene != "-":
+        tags.append(scene)
+
+    document_attributes = frame.get("document_attributes", {}) or {}
+    time_range = slot_display(document_attributes.get("time_range", {}), "document_attributes.time_range")
+    if time_range != "-":
+        tags.append(time_range)
+
+    paper_type = slot_display(document_attributes.get("paper_type", {}), "document_attributes.paper_type")
+    if paper_type != "-":
+        tags.append(paper_type)
+
+    keyword_value = ((frame.get("research_topic", {}) or {}).get("keywords", {}) or {}).get("value")
+    keyword_candidates: List[str] = []
+    if isinstance(keyword_value, list):
+        keyword_candidates = [clean_text(item) for item in keyword_value if clean_text(item)]
+    elif clean_text(keyword_value):
+        keyword_candidates = [clean_text(keyword_value)]
+    for item in keyword_candidates:
+        if len(tags) >= limit:
+            break
+        tags.append(item)
+
+    deduped: List[str] = []
+    seen = set()
+    for item in tags:
+        lowered = item.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        deduped.append(item)
+    return deduped[:limit]
+
+
+def render_saved_paper_library(saved_items: List[Dict[str, Any]]) -> None:
+    if not saved_items:
+        st.info(t("no_saved_papers"))
+        return
+
+    filter_text = clean_text(
+        st.text_input(
+            "筛选收藏论文",
+            key="saved_library_filter",
+            placeholder="按标题、作者、年份或 paper id 过滤",
+        )
+    )
+    filtered_items: List[Dict[str, Any]] = []
+    for item in saved_items:
+        searchable = " | ".join(
+            [
+                clean_text(item.get("title", "")),
+                clean_text(item.get("authors_display", "")),
+                clean_text(item.get("year_month", "")),
+                clean_text(item.get("paper_id", "")),
+            ]
+        ).lower()
+        if filter_text and filter_text.lower() not in searchable:
+            continue
+        filtered_items.append(item)
+
+    st.caption(f"共 {len(saved_items)} 篇收藏，当前显示 {len(filtered_items)} 篇。标题和链接都可以直接跳转原论文。")
+    if not filtered_items:
+        st.info("没有匹配的收藏论文。")
+        return
+
+    for item in filtered_items:
+        paper_id = clean_text(item.get("paper_id", ""))
+        paper_url = build_paper_external_url(item)
+        title = clean_text(item.get("title", "")) or paper_id or "-"
+        authors_display = clean_text(item.get("authors_display", ""))
+        meta_items = [clean_text(item.get("year_month", ""))]
+        saved_at = format_datetime_text(item.get("saved_at", ""))
+        if saved_at:
+            meta_items.append(t("saved_on_label", value=saved_at))
+        meta_text = " | ".join(part for part in meta_items if part)
+
+        with st.container(border=True):
+            title_col, action_col = st.columns([7.4, 1], gap="medium")
+            with title_col:
+                if paper_url:
+                    safe_url = html.escape(paper_url, quote=True)
+                    st.markdown(
+                        f"<div class='pc-library-title'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{html.escape(title)}</a></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(
+                        f"<div class='pc-library-link'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{html.escape(paper_url)}</a></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f"<div class='pc-library-title'>{html.escape(title)}</div>", unsafe_allow_html=True)
+                    st.caption(t("paper_link_missing"))
+                if meta_text:
+                    st.markdown(f"<div class='pc-library-meta'>{html.escape(meta_text)}</div>", unsafe_allow_html=True)
+                if authors_display and authors_display != "-":
+                    st.markdown(f"<div class='pc-library-submeta'>{html.escape(authors_display)}</div>", unsafe_allow_html=True)
+            with action_col:
+                if st.button(t("unsave_paper"), key=f"saved_remove_{paper_id}", use_container_width=True):
+                    unsave_paper(paper_id)
+                    st.rerun()
+
+
+def render_history_query_library(history_items: List[Dict[str, Any]]) -> None:
+    if not history_items:
+        st.info(t("no_history"))
+        return
+
+    filter_text = clean_text(
+        st.text_input(
+            "筛选历史记录",
+            key="history_library_filter",
+            placeholder="按问题、追问或意图标签过滤",
+        )
+    )
+    filtered_items: List[Dict[str, Any]] = []
+    for item in history_items:
+        query_text, follow_up_text = split_history_query_text(item.get("query_text", ""))
+        tags = build_history_intent_tags(item)
+        searchable = " | ".join([query_text, follow_up_text, " ".join(tags), format_datetime_text(item.get("created_at", ""))]).lower()
+        if filter_text and filter_text.lower() not in searchable:
+            continue
+        filtered_items.append(item)
+
+    st.caption(f"共 {len(history_items)} 条历史，当前显示 {len(filtered_items)} 条。支持从问题或追问补充一键回放。")
+    if not filtered_items:
+        st.info("没有匹配的历史记录。")
+        return
+
+    for item in filtered_items:
+        query_text, follow_up_text = split_history_query_text(item.get("query_text", ""))
+        created_at = format_datetime_text(item.get("created_at", ""))
+        tags = build_history_intent_tags(item)
+
+        with st.container(border=True):
+            query_col, action_col = st.columns([7.4, 1], gap="medium")
+            with query_col:
+                if created_at:
+                    st.markdown(
+                        f"<div class='pc-history-stamp'>{html.escape(t('query_time_label', value=created_at))}</div>",
+                        unsafe_allow_html=True,
+                    )
+                st.markdown(f"<div class='pc-history-query'>{html.escape(query_text or '-')}</div>", unsafe_allow_html=True)
+                if follow_up_text:
+                    st.markdown(
+                        f"<div class='pc-library-submeta'>{html.escape(t('follow_up_reply_label', value=follow_up_text))}</div>",
+                        unsafe_allow_html=True,
+                    )
+            with action_col:
+                if st.button(t("rerun_query"), key=f"history_rerun_{item['id']}", use_container_width=True):
+                    queue_query_state(query=query_text, follow_up=follow_up_text, auto_run=True)
+                    st.rerun()
+            if tags:
+                render_chip_row(tags, tone="soft")
+
+
+def render_demo_query_library(demo_queries: List[Dict[str, Any]]) -> None:
+    filter_text = clean_text(
+        st.text_input(
+            "筛选标准示例",
+            key="demo_library_filter",
+            placeholder="按示例问题关键词过滤",
+        )
+    )
+    filtered_queries = [
+        (index, item)
+        for index, item in enumerate(demo_queries, start=1)
+        if not filter_text or filter_text.lower() in clean_text(item.get("query", "")).lower()
+    ]
+    st.caption(f"共 {len(demo_queries)} 个标准示例，当前显示 {len(filtered_queries)} 个。支持先回填再手动改写，也支持直接运行。")
+    if not filtered_queries:
+        st.info("没有匹配的标准示例。")
+        return
+
+    for index, item in filtered_queries:
+        query_text = clean_text(item.get("query", ""))
+        follow_up_reply = clean_text(item.get("follow_up_reply", ""))
+        with st.container(border=True):
+            query_col, fill_col, run_col = st.columns([6.2, 1, 1], gap="medium")
+            with query_col:
+                st.markdown(f"<div class='pc-history-query'>{html.escape(query_text or '-')}</div>", unsafe_allow_html=True)
+                if follow_up_reply:
+                    st.markdown(
+                        f"<div class='pc-library-submeta'>{html.escape(t('follow_up_reply_label', value=follow_up_reply))}</div>",
+                        unsafe_allow_html=True,
+                    )
+            with fill_col:
+                if st.button("回填示例", key=f"fill_demo_tab_{index}", use_container_width=True):
+                    apply_demo_query(item, auto_run=False)
+                    st.rerun()
+            with run_col:
+                if st.button(t("replay"), key=f"replay_demo_tab_{index}", use_container_width=True):
+                    apply_demo_query(item, auto_run=True)
+                    st.rerun()
+
+
 def render_runtime_summary(payload: Dict[str, Any]) -> None:
     stage_events = payload.get("stage_events", [])
     top_results = payload.get("top_k_results", [])
@@ -1751,42 +2224,31 @@ def render_runtime_summary(payload: Dict[str, Any]) -> None:
         st.caption(t("no_cache_results"))
 
 
-def render_section_header(step_number: int, title: str, caption: str = "", anchor_id: str = "") -> None:
-    if anchor_id:
-        st.markdown(f"<div id='{anchor_id}'></div>", unsafe_allow_html=True)
-    markup = [
-        "<div class='pc-section-heading'>",
-        f"<div class='pc-section-step'>{step_number:02d}</div>",
-        "<div>",
-        f"<div class='pc-section-title'>{html.escape(title)}</div>",
-    ]
-    if caption:
-        markup.append(f"<div class='pc-section-caption'>{html.escape(caption)}</div>")
-    markup.extend(["</div>", "</div>"])
-    st.markdown("".join(markup), unsafe_allow_html=True)
-
-
 def render_anchor_autoscroll(anchor_id: str, *, behavior: str = "smooth", block: str = "start") -> None:
     target_id = clean_text(anchor_id)
     if not target_id:
         return
+    scroll_nonce = int(st.session_state.get("_anchor_autoscroll_render_nonce", 0)) + 1
+    st.session_state["_anchor_autoscroll_render_nonce"] = scroll_nonce
     components.html(
         f"""
-<div style="height:0; overflow:hidden;"></div>
+<div data-scroll-nonce="{scroll_nonce}" style="height:0; overflow:hidden;"></div>
 <script>
 (function() {{
+    const parentWindow = window.parent;
     const targetId = {target_id!r};
     const behavior = {behavior!r};
     const block = {block!r};
+    const scrollNonce = {scroll_nonce!r};
     const maxAttempts = 72;
     let attempts = 0;
 
     function scrollToAnchor() {{
-        const parentWindow = window.parent;
         const parentDoc = parentWindow && parentWindow.document;
         if (!parentDoc) return false;
         const anchor = parentDoc.getElementById(targetId);
         if (!anchor) return false;
+        void scrollNonce;
         anchor.scrollIntoView({{ behavior, block }});
         try {{
             parentWindow.location.hash = "#" + targetId;
@@ -1795,7 +2257,18 @@ def render_anchor_autoscroll(anchor_id: str, *, behavior: str = "smooth", block:
         return true;
     }}
 
-    if (scrollToAnchor()) return;
+    if (scrollToAnchor()) {{
+        if (parentWindow && parentWindow.requestAnimationFrame) {{
+            parentWindow.requestAnimationFrame(function() {{
+                scrollToAnchor();
+            }});
+        }} else {{
+            window.setTimeout(function() {{
+                scrollToAnchor();
+            }}, 80);
+        }}
+        return;
+    }}
 
     const timer = window.setInterval(function() {{
         attempts += 1;
@@ -1821,63 +2294,6 @@ def apply_demo_query(item: Dict[str, Any], *, auto_run: bool = True) -> None:
         explain_limit=5,
         auto_run=auto_run,
     )
-
-
-def build_step_navigation_items(has_payload: bool) -> List[tuple[str, str]]:
-    items = [
-        (t("search_input"), STEP_SECTION_ANCHORS[1]),
-        (f"{t('run_process')} / {t('model_workbench')}", STEP_SECTION_ANCHORS[2]),
-    ]
-    if has_payload:
-        items.extend(
-            [
-                (t("system_understanding"), STEP_SECTION_ANCHORS[3]),
-                (t("follow_up_workspace"), STEP_SECTION_ANCHORS[4]),
-                (t("topk_recommendations"), STEP_SECTION_ANCHORS[5]),
-                (t("paper_details"), STEP_SECTION_ANCHORS[6]),
-            ]
-        )
-    items.append((t("management_workspace"), STEP_SECTION_ANCHORS[7]))
-    return items
-
-
-def render_step_navigation(has_payload: bool) -> None:
-    st.subheader(t("quick_navigation"))
-    st.caption(t("quick_navigation_hint"))
-    if not has_payload:
-        st.caption(t("quick_navigation_empty"))
-    links = "\n".join(
-        [
-            f"- <a href='#{anchor}' target='_self'>{label}</a>"
-            for label, anchor in build_step_navigation_items(has_payload)
-        ]
-    )
-    st.markdown(links, unsafe_allow_html=True)
-
-
-# 侧边栏保留界面设置、步骤定位和轻量示例快捷入口，避免打断主页面主线。
-def render_sidebar(demo_queries: List[Dict[str, Any]], has_payload: bool) -> bool:
-    with st.sidebar:
-        current_value = st.session_state.get("ui_language", "zh")
-        language_codes = list(LANGUAGE_OPTIONS.keys())
-        default_index = language_codes.index(current_value) if current_value in language_codes else 0
-        st.subheader(t("workspace_settings"))
-        st.selectbox(
-            t("language_label"),
-            options=language_codes,
-            index=default_index,
-            key="ui_language",
-            format_func=lambda code: LANGUAGE_OPTIONS.get(code, code),
-        )
-        st.caption(t("sidebar_hint"))
-        render_step_navigation(has_payload)
-        st.subheader(t("demo_replay"))
-        st.caption(t("sidebar_demo_hint"))
-        for index, item in enumerate(demo_queries, start=1):
-            if st.button(t("demo_button", index=index), key=f"sidebar_demo_{index}", use_container_width=True):
-                apply_demo_query(item, auto_run=False)
-                st.rerun()
-        return st.checkbox(t("show_raw_json"), value=False)
 
 
 def render_panel_lead(title: str, caption: str = "", kicker: str = "") -> None:
@@ -1913,6 +2329,39 @@ def render_metric_grid(metrics: List[tuple[str, Any]]) -> None:
         ]
     )
     st.markdown(f"<div class='pc-kpi-grid'>{cards}</div>", unsafe_allow_html=True)
+
+
+def render_summary_strip(metrics: List[tuple[str, Any]]) -> None:
+    normalized = [
+        (clean_text(label), clean_text(value))
+        for label, value in metrics
+        if clean_text(label) and clean_text(value)
+    ]
+    if not normalized:
+        return
+    cards = "".join(
+        [
+            "<div class='pc-summary-card'>"
+            f"<div class='pc-summary-label'>{html.escape(label)}</div>"
+            f"<div class='pc-summary-value'>{html.escape(value)}</div>"
+            "</div>"
+            for label, value in normalized
+        ]
+    )
+    st.markdown(f"<div class='pc-summary-strip'>{cards}</div>", unsafe_allow_html=True)
+
+
+def render_text_snapshot(label: str, value: Any) -> None:
+    text = clean_text(value)
+    if not text:
+        return
+    st.markdown(
+        "<div class='pc-context-block'>"
+        f"<div class='pc-context-label'>{html.escape(clean_text(label))}</div>"
+        f"<div class='pc-context-value'>{html.escape(text)}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_key_value_list(items: List[tuple[str, Any]]) -> None:
@@ -1954,82 +2403,70 @@ def render_hero_banner(stats: Dict[str, int]) -> None:
 
 
 def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, Any]]) -> None:
-    left_col, right_col = st.columns([0.92, 2.48], gap="large")
-    with left_col:
-        with st.container(border=True):
-            render_panel_lead("界面设置 / 系统状态", "这里集中展示运行库、模型状态和当前检索模式。", "状态总览")
-            render_key_value_list(
-                [
-                    ("当前数据库", relative_to_project(get_default_db_path())),
-                    ("论文数", stats.get("papers", 0)),
-                    ("章节数", stats.get("sections", 0)),
-                    ("FTS 行数", stats.get("fts_rows", 0)),
-                    ("语义卡", stats.get("semantic_cards", 0)),
-                    ("检索历史", stats.get("intent_histories", 0)),
-                    ("收藏论文", stats.get("saved_papers", 0)),
-                    ("LLM 状态", t("api_key_configured") if OPENAI_API_KEY else t("api_key_unconfigured")),
-                ]
-            )
-            render_chip_row(
-                [
-                    "主链路检索",
-                    f"Top-K = {int(st.session_state.get('top_k_input', 5))}",
-                    f"候选池 = {int(st.session_state.get('candidate_pool_input', 120))}",
-                ]
-            )
-
-    with right_col:
-        with st.container(border=True):
-            render_panel_lead(t("search_input"), t("search_input_caption"), "自然语言入口")
-            st.text_area(
-                t("natural_language_query"),
-                key="query_input",
-                height=110,
-                placeholder=t("query_placeholder"),
-            )
+    st.markdown(f"<div id='{SEARCH_WORKSPACE_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        render_panel_lead("论文检索工作台", "搜索入口")
+        render_chip_row(
+            [
+                f"数据集：{str(get_active_dataset_info().get('label', 'Dataset'))}",
+                f"数据库：{relative_to_project(get_default_db_path())}",
+                f"论文 {stats.get('papers', 0)} 篇",
+                f"语义卡 {stats.get('semantic_cards', 0)} 张",
+                f"历史记录 {stats.get('intent_histories', 0)} 条",
+                t("api_key_configured") if OPENAI_API_KEY else t("api_key_unconfigured"),
+            ],
+            tone="soft",
+        )
+        st.text_area(
+            t("natural_language_query"),
+            key="query_input",
+            height=120,
+            placeholder=t("query_placeholder"),
+        )
+        with st.expander(t("optional_follow_up"), expanded=bool(clean_text(st.session_state.get("follow_up_input", "")))):
             st.text_area(
                 t("optional_follow_up"),
                 key="follow_up_input",
-                height=80,
+                height=88,
                 placeholder=t("follow_up_placeholder"),
             )
-            config_col1, config_col2, config_col3, config_col4 = st.columns([1, 1, 1, 1.1], gap="medium")
-            with config_col1:
-                st.number_input("Top-K", min_value=3, max_value=10, value=5, step=1, key="top_k_input")
-            with config_col2:
-                st.number_input(
-                    t("candidate_pool_size"),
-                    min_value=20,
-                    max_value=200,
-                    value=120,
-                    step=10,
-                    key="candidate_pool_input",
-                )
-            with config_col3:
-                st.number_input(t("explain_limit"), min_value=3, max_value=10, value=5, step=1, key="explain_limit_input")
-            with config_col4:
-                st.write("")
-                if st.button(t("run_search"), type="primary", use_container_width=True, key="run_search_button"):
-                    queue_run_request()
-                    st.rerun()
-
-        with st.container(border=True):
-            render_panel_lead("标准示例与状态面板", "点击示例会回填到输入框，不会自动检索。", "快速回填")
-            render_metric_grid(
-                [
-                    (t("papers_metric"), stats.get("papers", 0)),
-                    (t("sections_metric"), stats.get("sections", 0)),
-                    (t("semantic_cards_metric"), stats.get("semantic_cards", 0)),
-                    (t("history_metric"), stats.get("intent_histories", 0)),
-                ]
+        config_col1, config_col2, config_col3, config_col4 = st.columns([1, 1, 1, 1.15], gap="medium")
+        with config_col1:
+            st.number_input("Top-K", min_value=3, max_value=10, value=5, step=1, key="top_k_input")
+        with config_col2:
+            st.number_input(
+                t("candidate_pool_size"),
+                min_value=20,
+                max_value=200,
+                value=120,
+                step=10,
+                key="candidate_pool_input",
             )
-            demo_cols = st.columns(2, gap="medium")
-            for index, item in enumerate(demo_queries, start=1):
-                with demo_cols[(index - 1) % 2]:
-                    label = truncate_text(item.get("query", ""), 24)
-                    if st.button(f"示例 {index} · {label}", key=f"main_demo_{index}", use_container_width=True):
-                        apply_demo_query(item, auto_run=False)
-                        st.rerun()
+        with config_col3:
+            st.number_input(t("explain_limit"), min_value=3, max_value=10, value=5, step=1, key="explain_limit_input")
+        with config_col4:
+            st.write("")
+            if st.button(t("run_search"), type="primary", use_container_width=True, key="run_search_button"):
+                queue_run_request()
+                st.rerun()
+
+    with st.container(border=True):
+        render_panel_lead("快速开始", "点击即可回填到检索框。", "常用示例")
+        render_metric_grid(
+            [
+                (t("papers_metric"), stats.get("papers", 0)),
+                (t("sections_metric"), stats.get("sections", 0)),
+                (t("semantic_cards_metric"), stats.get("semantic_cards", 0)),
+                (t("history_metric"), stats.get("intent_histories", 0)),
+            ]
+        )
+        demo_cols = st.columns(3, gap="medium")
+        for index, item in enumerate(demo_queries, start=1):
+            with demo_cols[(index - 1) % 3]:
+                label = truncate_text(item.get("query", ""), 26)
+                if st.button(f"示例 {index} · {label}", key=f"main_demo_{index}", use_container_width=True):
+                    apply_demo_query(item, auto_run=False)
+                    st.rerun()
 
 
 # 首页概览区域展示数据库和语义层的总体统计。
@@ -2542,169 +2979,374 @@ def build_explanation_caption(result: Dict[str, Any]) -> str:
     return ""
 
 
-# Top-K 摘要默认直接展开，优先给出可快速扫描的重点信息。
-def render_result_summary_card(
-    rank: int,
-    result: Dict[str, Any],
-    saved_ids: set[str],
-) -> None:
-    query_match = result.get("query_paper_match") or {}
-    matched_dimensions = query_match.get("matched_dimensions", [])
-    label = t("unsave_paper") if result["paper_id"] in saved_ids else t("save_paper")
+def build_result_evidence_preview(evidence_pack: Dict[str, Any], result: Dict[str, Any]) -> str:
+    for item in evidence_pack.get("matched_snippets", []) or []:
+        snippet = truncate_text(item.get("snippet", ""), limit=180)
+        if not snippet:
+            continue
+        field = localize_field_text(item.get("field", ""))
+        return f"{field}：{snippet}" if field else snippet
+    matched_snippet = truncate_text(result.get("matched_snippet", ""), limit=180)
+    if matched_snippet:
+        return matched_snippet
+    matched_sections = normalize_text_list(evidence_pack.get("matched_sections", []), limit=2)
+    if matched_sections:
+        return f"命中章节：{'；'.join(matched_sections)}"
+    return ""
+
+
+def render_semantic_card_overview(semantic_card: Dict[str, Any]) -> None:
+    if not isinstance(semantic_card, dict) or not semantic_card:
+        st.info("当前论文还没有可展示的语义卡片。")
+        return
+
+    overview_tags: List[str] = []
+    paper_type = translate_mapping_value(semantic_card.get("paper_type", ""), PAPER_TYPE_LABELS)
+    if paper_type:
+        overview_tags.append(paper_type)
+    intent_tags = [
+        translate_mapping_value(item, SEARCH_SCENE_LABELS)
+        for item in normalize_text_list(semantic_card.get("likely_user_intents", []), limit=4)
+        if clean_text(translate_mapping_value(item, SEARCH_SCENE_LABELS))
+    ]
+    overview_tags.extend(intent_tags)
+    if overview_tags:
+        render_chip_row(overview_tags, tone="soft")
+
+    render_text_snapshot("研究问题", semantic_card.get("problem_statement", ""))
+
+    left_col, right_col = st.columns(2, gap="large")
+    with left_col:
+        render_string_list("研究领域", normalize_text_list(semantic_card.get("domain_tags", []), limit=6), "暂无研究领域")
+        render_string_list("研究任务", normalize_text_list(semantic_card.get("task_tags", []), limit=6), "暂无研究任务")
+        render_string_list("核心方法", normalize_text_list(semantic_card.get("method_tags", []), limit=6), "暂无方法线索")
+        render_string_list("模型线索", normalize_text_list(semantic_card.get("model_tags", []), limit=6), "暂无模型线索")
+    with right_col:
+        render_string_list("数据集线索", normalize_text_list(semantic_card.get("dataset_tags", []), limit=6), "暂无数据集线索")
+        render_string_list("评测指标", normalize_text_list(semantic_card.get("metric_tags", []), limit=6), "暂无评测指标")
+        render_string_list("应用场景", normalize_text_list(semantic_card.get("application_scenarios", []), limit=6), "暂无应用场景")
+        render_string_list("用户意图", intent_tags, "暂无用户意图线索")
+
+    render_string_list("核心贡献", normalize_text_list(semantic_card.get("core_contributions", []), limit=5), "暂无核心贡献")
+    render_text_snapshot("适用范围 / 局限", semantic_card.get("limitations_or_scope", ""))
+
+
+def render_query_information_rail(payload: Dict[str, Any]) -> None:
+    results = payload.get("top_k_results", []) or []
+    quality = summarize_result_quality(results)
+    frame = payload.get("final_intent_frame", {}) or {}
+
     with st.container(border=True):
-        header_left, header_right = st.columns([6, 1], gap="medium")
-        with header_left:
-            paper_type = translate_mapping_value(result.get("paper_type", ""), PAPER_TYPE_LABELS) or "论文"
-            st.markdown(
-                f"<div class='pc-result-kicker'>结果 {rank} · {html.escape(paper_type)} · 最终得分 {result.get('final_score', 0):.3f}</div>",
-                unsafe_allow_html=True,
+        render_panel_lead("检索概览",  "信息架构")
+        query_col, brief_col = st.columns([1.14, 1.08], gap="large")
+        with query_col:
+            render_text_snapshot("当前问题", payload.get("query", ""))
+            if clean_text(payload.get("follow_up_reply", "")):
+                render_text_snapshot("本轮追问补充", payload.get("follow_up_reply", ""))
+        with brief_col:
+            intent_tags = build_intent_brief_tags(frame)
+            if intent_tags:
+                st.markdown("**当前有效条件**")
+                render_chip_row(intent_tags, tone="soft")
+            render_summary_strip(
+                [
+                    ("候选池", payload.get("candidate_pool_size", 0)),
+                    ("返回结果", len(results)),
+                    ("主意图命中", quality.get("main_intent_count", 0)),
+                    ("平均匹配分", f"{quality.get('avg_match_score', 0.0):.3f}"),
+                ]
             )
-            st.markdown(f"#### {result['title']}")
-            st.markdown(
-                f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(result.get('authors_raw', '')))} | {html.escape(clean_text(result.get('year_month', '')))} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
-                unsafe_allow_html=True,
-            )
-        with header_right:
-            if st.button(label, key=f"save_toggle_summary_{result['paper_id']}", use_container_width=True):
-                toggle_saved_state(result["paper_id"], saved_ids)
+            st.caption("点击结果中的“查看详情”后，页面会自动定位到详情面板。")
+            suggestion_payload = payload.get("follow_up_suggestion", {}) or {}
+            suggested_reply = clean_text(suggestion_payload.get("draft", ""))
+            if suggested_reply:
+                st.caption("建议补充语句已保留在追问区，可直接继续细化检索。")
 
-        metadata = build_result_metadata(result)
-        if metadata:
-            render_chip_row(metadata, tone="soft")
 
-        summary_chips = [
-            f"主意图{'已满足' if query_match.get('main_intent_satisfied') else '未满足'}",
-            f"时间编码 {clean_text(result.get('year_month', ''))}",
-        ]
-        render_chip_row(summary_chips, tone="good" if query_match.get("main_intent_satisfied") else "soft")
+def render_global_quick_access_sidebar(stats: Dict[str, int], has_payload: bool) -> None:
+    with st.sidebar:
+        st.subheader("快捷入口")
+        st.caption("一键跳转到指定位置。")
+        if st.button("搜索入口", key="sidebar_jump_search_workspace", use_container_width=True):
+            queue_workspace_jump(SEARCH_WORKSPACE_SCROLL_ANCHOR)
+            st.rerun()
+        if st.button("结果流", key="sidebar_jump_result_stream", use_container_width=True, disabled=not has_payload):
+            queue_workspace_jump(RESULT_STREAM_SCROLL_ANCHOR)
+            st.rerun()
+        if st.button("当前详情", key="sidebar_jump_detail_panel", use_container_width=True, disabled=not has_payload):
+            queue_workspace_jump(DETAIL_PANEL_SCROLL_ANCHOR)
+            st.rerun()
+        if st.button("追问区", key="sidebar_jump_intent_workspace", use_container_width=True, disabled=not has_payload):
+            queue_workspace_jump("pc-intent-workspace", open_intent=True)
+            st.rerun()
+        if st.button("运行链路", key="sidebar_jump_runtime_workspace", use_container_width=True, disabled=not has_payload):
+            queue_workspace_jump("pc-runtime-workspace", open_runtime=True)
+            st.rerun()
+        if st.button(f"收藏库 ({stats.get('saved_papers', 0)})", key="sidebar_jump_saved_library", use_container_width=True):
+            queue_workspace_jump("pc-management-area", management_view="saved")
+            st.rerun()
+        if st.button(f"历史记录 ({stats.get('intent_histories', 0)})", key="sidebar_jump_history_library", use_container_width=True):
+            queue_workspace_jump("pc-management-area", management_view="history")
+            st.rerun()
+        if not has_payload:
+            st.caption("完成一次检索后，可启用结果流、详情、追问区和运行链路跳转。")
 
-        st.markdown(f"**{t('ranking_explanation')}**")
-        explanation_caption = build_explanation_caption(result)
-        if explanation_caption:
-            st.caption(explanation_caption)
-        st.write(query_match.get("brief_reason", t("no_match_explanation")))
-        render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
-        render_string_list(
-            t("matched_dimensions"),
-            matched_dimensions,
-            t("no_matched_dimensions"),
-            formatter=localize_dimension_text,
+
+def ensure_selected_result_paper_id(payload: Dict[str, Any]) -> str:
+    results = payload.get("top_k_results", []) or []
+    paper_ids = [clean_text(item.get("paper_id", "")) for item in results if clean_text(item.get("paper_id", ""))]
+    if not paper_ids:
+        st.session_state.pop("selected_result_paper_id", None)
+        return ""
+    selected_paper_id = clean_text(st.session_state.get("selected_result_paper_id", ""))
+    if selected_paper_id not in paper_ids:
+        selected_paper_id = paper_ids[0]
+        st.session_state["selected_result_paper_id"] = selected_paper_id
+    return selected_paper_id
+
+
+def render_result_stream_panel(payload: Dict[str, Any], saved_ids: set[str]) -> None:
+    results = payload.get("top_k_results", []) or []
+    selected_paper_id = ensure_selected_result_paper_id(payload)
+    st.markdown(f"<div id='{RESULT_STREAM_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
+    render_panel_lead("结果流", "先快速扫结果，再切到右侧详情；点击“查看详情”会自动把视口带到详情面板。", "检索结果")
+    st.caption(
+        t(
+            "results_caption",
+            candidate_pool=payload.get("candidate_pool_size", 0),
+            result_count=len(results),
+            history_id=payload.get("history_id"),
         )
-        render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
-        abstract_preview = truncate_text(result.get("abstract", ""))
-        if abstract_preview:
-            st.markdown(f"**{t('abstract_preview')}**")
-            st.write(abstract_preview)
-        st.caption(t("detail_expand_hint"))
+    )
+    quality = summarize_result_quality(results)
+    render_summary_strip(
+        [
+            ("结果数", len(results)),
+            ("主意图命中", quality.get("main_intent_count", 0)),
+            ("平均匹配分", f"{quality.get('avg_match_score', 0.0):.3f}"),
+            ("平均最终分", f"{quality.get('avg_final_score', 0.0):.3f}"),
+        ]
+    )
+    if payload.get("follow_up_reply"):
+        with st.expander("这轮追问带来的变化", expanded=False):
+            render_follow_up_convergence(payload)
+            render_result_change_summary(payload)
+    if not results:
+        st.warning(t("no_results"))
+        return
 
+    for rank, result in enumerate(results, start=1):
+        paper_id = clean_text(result.get("paper_id", ""))
+        query_match = result.get("query_paper_match") or {}
+        evidence_pack = payload.get("paper_evidence_packs", {}).get(paper_id, {}) or {}
+        paper_type = translate_mapping_value(result.get("paper_type", ""), PAPER_TYPE_LABELS) or "论文"
+        paper_url = build_paper_external_url(result)
+        title = clean_text(result.get("title", "")) or paper_id or "-"
+        abstract_preview = truncate_text(result.get("abstract", ""), limit=220)
+        evidence_preview = build_result_evidence_preview(evidence_pack, result)
+        matched_dimensions = [
+            localize_dimension_text(item)
+            for item in query_match.get("matched_dimensions", [])
+            if clean_text(item)
+        ][:4]
+        chips = [paper_type, clean_text(result.get("year_month", ""))]
+        if paper_id == selected_paper_id:
+            chips.insert(0, "当前详情")
+        if query_match.get("main_intent_satisfied"):
+            chips.append("主意图已满足")
+        if matched_dimensions:
+            chips.extend(matched_dimensions)
 
-# 论文详情区保留完整摘要、命中证据和可调试的结构化输出。
-def render_result_detail_card(
-    rank: int,
-    result: Dict[str, Any],
-    evidence_pack: Dict[str, Any],
-    saved_ids: set[str],
-    show_raw_json: bool,
-) -> None:
-    query_match = result.get("query_paper_match") or {}
-    label = t("unsave_paper") if result["paper_id"] in saved_ids else t("save_paper")
-    with st.expander(f"Top {rank}. {result['title']}", expanded=rank == 1):
         with st.container(border=True):
-            header_left, header_right = st.columns([6, 1], gap="medium")
+            header_left, detail_col, action_col = st.columns([7.2, 1.45, 1.35], gap="medium")
             with header_left:
                 st.markdown(
-                    f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(result.get('authors_raw', '')))} | {html.escape(clean_text(result.get('year_month', '')))} | 最终得分 {result.get('final_score', 0):.3f} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
+                    f"<div class='pc-result-kicker'>Top {rank} · {html.escape(paper_type)} · 最终得分 {result.get('final_score', 0):.3f}</div>",
                     unsafe_allow_html=True,
                 )
-            with header_right:
-                if st.button(label, key=f"save_toggle_detail_{result['paper_id']}", use_container_width=True):
-                    toggle_saved_state(result["paper_id"], saved_ids)
-
-            metadata = build_result_metadata(result)
-            if metadata:
-                render_chip_row(metadata, tone="soft")
-
-            body_left, body_right = st.columns([1.15, 0.95], gap="large")
-            with body_left:
-                render_string_list(t("ranking_reasons"), result.get("ranking_reasons", []), t("no_ranking_reasons"))
-                render_string_list(
-                    t("matched_dimensions"),
-                    query_match.get("matched_dimensions", []),
-                    t("no_matched_dimensions"),
-                    formatter=localize_dimension_text,
+                if paper_url:
+                    safe_url = html.escape(paper_url, quote=True)
+                    st.markdown(
+                        f"<div class='pc-library-title'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{html.escape(title)}</a></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f"<div class='pc-library-title'>{html.escape(title)}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(result.get('authors_raw', '')))} | {html.escape(clean_text(result.get('year_month', '')))} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
+                    unsafe_allow_html=True,
                 )
-                render_string_list(t("unmet_constraints"), result.get("unmet_constraints", []), t("no_unmet_constraints"))
-                st.markdown(f"**{t('abstract')}**")
-                st.write(result.get("abstract", ""))
-            with body_right:
-                render_string_list(t("matched_sections"), evidence_pack.get("matched_sections", []), t("no_matched_sections"))
-                render_string_list(
-                    t("matched_snippets"),
-                    [
-                        f"{localize_field_text(item.get('field', ''))}: {item.get('snippet', '')}"
-                        for item in evidence_pack.get("matched_snippets", [])
-                    ],
-                    t("no_matched_snippets"),
-                )
-                st.markdown(f"**{t('ranking_explanation')}**")
-                explanation_caption = build_explanation_caption(result)
-                if explanation_caption:
-                    st.caption(explanation_caption)
-                st.write(query_match.get("brief_reason", t("no_match_explanation")))
+                if paper_url:
+                    safe_url = html.escape(paper_url, quote=True)
+                    st.markdown(
+                        f"<div class='pc-library-link'><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{html.escape(paper_url)}</a></div>",
+                        unsafe_allow_html=True,
+                    )
+            with detail_col:
+                if st.button(
+                    "查看详情",
+                    key=f"select_detail_{paper_id}",
+                    use_container_width=True,
+                    disabled=paper_id == selected_paper_id,
+                ):
+                    st.session_state["selected_result_paper_id"] = paper_id
+                    st.session_state["_pending_anchor_scroll"] = DETAIL_PANEL_SCROLL_ANCHOR
+                    st.rerun()
+            with action_col:
+                button_label = "取消收藏" if paper_id in saved_ids else "收藏"
+                if st.button(button_label, key=f"toggle_stream_save_{paper_id}", use_container_width=True):
+                    toggle_saved_state(paper_id, saved_ids)
 
-            with st.expander(t("semantic_card")):
+            if chips:
+                render_chip_row(chips, tone="good" if (query_match.get("main_intent_satisfied") or paper_id == selected_paper_id) else "soft")
+            brief_reason = clean_text(query_match.get("brief_reason", ""))
+            if brief_reason:
+                st.write(brief_reason)
+            if evidence_preview:
+                st.markdown(
+                    f"<div class='pc-result-snippet'><strong>命中证据：</strong>{html.escape(evidence_preview)}</div>",
+                    unsafe_allow_html=True,
+                )
+            if abstract_preview:
+                st.caption(abstract_preview)
+
+
+def render_selected_result_panel(payload: Dict[str, Any], saved_ids: set[str], show_raw_json: bool = False) -> None:
+    selected_paper_id = ensure_selected_result_paper_id(payload)
+    results = payload.get("top_k_results", []) or []
+    if not results or not selected_paper_id:
+        st.info(t("no_results"))
+        return
+
+    selected_rank = 1
+    selected_result = results[0]
+    for rank, item in enumerate(results, start=1):
+        if clean_text(item.get("paper_id", "")) == selected_paper_id:
+            selected_rank = rank
+            selected_result = item
+            break
+
+    evidence_pack = payload.get("paper_evidence_packs", {}).get(selected_paper_id, {})
+    query_match = selected_result.get("query_paper_match") or {}
+    label = "取消收藏" if selected_paper_id in saved_ids else "收藏"
+    paper_url = build_paper_external_url(selected_result)
+
+    with st.container(border=True):
+        st.markdown(f"<div id='{DETAIL_PANEL_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
+        render_panel_lead("论文详情",  "详情面板")
+        st.markdown(f"### Top {selected_rank}. {selected_result['title']}")
+        st.markdown(
+            f"<div class='pc-inline-meta'>{html.escape(format_authors_for_display(selected_result.get('authors_raw', '')))} | {html.escape(clean_text(selected_result.get('year_month', '')))} | 最终得分 {selected_result.get('final_score', 0):.3f} | 匹配分 {query_match.get('match_score', 0):.3f}</div>",
+            unsafe_allow_html=True,
+        )
+        render_summary_strip(
+            [
+                ("当前排名", f"Top {selected_rank}"),
+                ("最终得分", f"{selected_result.get('final_score', 0):.3f}"),
+                ("匹配分", f"{query_match.get('match_score', 0):.3f}"),
+                ("时间", clean_text(selected_result.get("year_month", "")) or "-"),
+            ]
+        )
+        action_cols = st.columns(2 if paper_url else 1, gap="small")
+        if paper_url:
+            with action_cols[0]:
+                st.link_button("打开原文", paper_url, use_container_width=True)
+            with action_cols[1]:
+                if st.button(label, key=f"selected_toggle_save_{selected_paper_id}", use_container_width=True):
+                    toggle_saved_state(selected_paper_id, saved_ids)
+        else:
+            with action_cols[0]:
+                if st.button(label, key=f"selected_toggle_save_{selected_paper_id}", use_container_width=True):
+                    toggle_saved_state(selected_paper_id, saved_ids)
+
+        metadata = build_result_metadata(selected_result)
+        if metadata:
+            render_chip_row(metadata, tone="soft")
+        render_paper_external_link(selected_result)
+
+        summary_tab, evidence_tab, semantic_tab, structured_tab = st.tabs(["摘要与解释", "命中证据", "语义画像", "结构化输出"])
+        with summary_tab:
+            st.markdown(f"**{t('ranking_explanation')}**")
+            explanation_caption = build_explanation_caption(selected_result)
+            if explanation_caption:
+                st.caption(explanation_caption)
+            st.write(query_match.get("brief_reason", t("no_match_explanation")))
+            render_string_list(t("ranking_reasons"), selected_result.get("ranking_reasons", []), t("no_ranking_reasons"))
+            render_string_list(t("unmet_constraints"), selected_result.get("unmet_constraints", []), t("no_unmet_constraints"))
+            st.markdown(f"**{t('abstract')}**")
+            st.write(selected_result.get("abstract", ""))
+        with evidence_tab:
+            render_string_list(
+                t("matched_dimensions"),
+                query_match.get("matched_dimensions", []),
+                t("no_matched_dimensions"),
+                formatter=localize_dimension_text,
+            )
+            render_string_list(t("matched_sections"), evidence_pack.get("matched_sections", []), t("no_matched_sections"))
+            render_string_list(
+                t("matched_snippets"),
+                [
+                    f"{localize_field_text(item.get('field', ''))}: {item.get('snippet', '')}"
+                    for item in evidence_pack.get("matched_snippets", [])
+                ],
+                t("no_matched_snippets"),
+            )
+        with semantic_tab:
+            render_semantic_card_overview(evidence_pack.get("semantic_card", {}))
+        with structured_tab:
+            with st.expander(t("semantic_card"), expanded=True):
                 st.json(evidence_pack.get("semantic_card", {}))
-
-            with st.expander(t("query_paper_match")):
+            with st.expander(t("query_paper_match"), expanded=False):
                 st.json(query_match)
-
             if show_raw_json:
-                with st.expander(t("raw_result_json")):
-                    st.json(result)
+                with st.expander(t("raw_result_json"), expanded=False):
+                    st.json(selected_result)
 
 
 # 管理区集中展示收藏、历史和标准演示。
 def render_management_area(demo_queries: List[Dict[str, Any]], *, show_header: bool = True) -> None:
     if show_header:
         st.subheader(t("management_area"))
-    saved_col, history_col, demos_col = st.columns([1.05, 1.2, 1.1], gap="large")
+    st.markdown("<div id='pc-management-area'></div>", unsafe_allow_html=True)
+    saved_items = list_saved_papers(limit=50)
+    history_items = list_search_history(limit=20)
+    view_labels = {
+        "saved": f"{t('saved_papers_tab')} ({len(saved_items)})",
+        "history": f"{t('history_tab')} ({len(history_items)})",
+        "demos": f"{t('standard_demos_tab')} ({len(demo_queries)})",
+    }
+    if clean_text(st.session_state.get("management_view", "")) not in view_labels:
+        st.session_state["management_view"] = "saved"
 
-    with saved_col:
+    selected_view = st.radio(
+        "管理区视图",
+        options=list(view_labels.keys()),
+        key="management_view",
+        format_func=lambda option: view_labels[option],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    render_summary_strip(
+        [
+            ("收藏论文", len(saved_items)),
+            ("检索历史", len(history_items)),
+            ("标准示例", len(demo_queries)),
+        ]
+    )
+
+    if selected_view == "saved":
         with st.container(border=True):
-            render_panel_lead(t("saved_papers_tab"), "收藏后的论文会沉淀在这里，便于后续写作和比对。", "管理区")
-            saved_items = list_saved_papers(limit=50)
-            if not saved_items:
-                st.info(t("no_saved_papers"))
-            else:
-                render_string_list(
-                    t("saved_papers_tab"),
-                    [f"{item['title']} | {format_authors_for_display(item['authors_raw'])} | {item['year_month']}" for item in saved_items],
-                    t("no_saved_papers"),
-                )
-
-    with history_col:
+            render_panel_lead(t("saved_papers_tab"), "标题优先、链接直达，作为轻量论文书签库使用。", "管理区")
+            render_saved_paper_library(saved_items)
+    elif selected_view == "history":
         with st.container(border=True):
-            render_panel_lead(t("history_tab"), "按时间回看自然语言查询与追问记录。", "管理区")
-            history_items = list_search_history(limit=20)
-            if not history_items:
-                st.info(t("no_history"))
-            else:
-                render_string_list(
-                    t("history_tab"),
-                    [f"{item['created_at']} | {item['query_text']}" for item in history_items],
-                    t("no_history"),
-                )
-
-    with demos_col:
+            render_panel_lead(t("history_tab"), "按时间线回看查询，突出原始问题、追问补充和意图标签。", "管理区")
+            render_history_query_library(history_items)
+    else:
         with st.container(border=True):
             render_panel_lead(t("standard_demos_tab"), "用于课堂演示、论文截图和固定样例回放。", "管理区")
-            for index, item in enumerate(demo_queries, start=1):
-                query_label = truncate_text(item["query"], 46)
-                if st.button(f"{index}. {query_label}", key=f"replay_demo_{index}", use_container_width=True):
-                    apply_demo_query(item, auto_run=True)
-                    st.rerun()
-                if item.get("follow_up_reply"):
-                    st.caption(t("follow_up_reply_label", value=item["follow_up_reply"]))
+            render_demo_query_library(demo_queries)
 
 
 # 收集界面输入并执行一次完整主链路。
@@ -2779,8 +3421,7 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
 # 页面总入口：负责状态检查、表单渲染和结果展示。
 def main() -> None:
     dataset_info = get_active_dataset_info()
-    st.session_state.setdefault("ui_language", "zh")
-    st.set_page_config(page_title="PaperCompass", layout="wide")
+    st.set_page_config(page_title="PaperCompass", layout="wide", initial_sidebar_state="expanded")
     inject_runtime_process_styles()
     st.title("PaperCompass")
     st.caption(t("page_caption", dataset=str(dataset_info.get("label", "Dataset"))))
@@ -2801,21 +3442,12 @@ def main() -> None:
     demo_queries = load_demo_queries()
 
     render_hero_banner(stats)
-    render_section_header(1, t("search_input"), t("search_input_caption"), anchor_id=STEP_SECTION_ANCHORS[1])
     st.markdown(
         f"<div class='pc-note'>{html.escape(t('search_status', db_path=relative_to_project(get_default_db_path()), papers=stats.get('papers', 0), llm_status=t('api_key_configured') if OPENAI_API_KEY else t('api_key_unconfigured')))}</div>",
         unsafe_allow_html=True,
     )
     render_search_workspace(stats, demo_queries)
-    render_section_header(
-        2,
-        f"{t('run_process')} / {t('model_workbench')}",
-        t("runtime_workspace_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[2],
-    )
     st.markdown(f"<div id='{LIVE_PROCESS_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
-    if st.session_state.pop("_pending_live_process_scroll", False):
-        render_anchor_autoscroll(LIVE_PROCESS_SCROLL_ANCHOR)
 
     pending_run_query = st.session_state.pop("_pending_run_query", False)
     pending_query_override = st.session_state.pop("_pending_run_query_override", "")
@@ -2826,89 +3458,53 @@ def main() -> None:
     payload = st.session_state.get("latest_payload")
     if payload:
         sync_generated_follow_up_entry(payload)
-    show_raw_json = render_sidebar(demo_queries, bool(payload))
-    render_runtime_workspace(stats, payload, bool(app_state))
+    render_global_quick_access_sidebar(stats, bool(payload))
+    st.session_state.pop("_pending_live_process_scroll", None)
+    show_raw_json = False
+    pending_anchor_scroll = clean_text(st.session_state.pop("_pending_anchor_scroll", ""))
 
     if not payload:
-        render_section_header(
-            7,
-            t("management_workspace"),
-            t("management_workspace_caption"),
-            anchor_id=STEP_SECTION_ANCHORS[7],
-        )
+        st.divider()
         render_management_area(demo_queries, show_header=False)
+        if pending_anchor_scroll:
+            render_anchor_autoscroll(pending_anchor_scroll)
         return
 
-    render_section_header(
-        3,
-        t("system_understanding"),
-        t("system_understanding_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[3],
+    intent_expanded = bool(payload.get("final_intent_frame", {}).get("clarification_needed")) or bool(
+        st.session_state.pop("_open_intent_workspace", False)
     )
-    render_intent_panel(payload["final_intent_frame"], payload.get("follow_up_suggestion"))
+    runtime_expanded = bool(st.session_state.pop("_open_runtime_workspace", False))
 
-    render_section_header(
-        4,
-        t("follow_up_workspace"),
-        t("follow_up_workspace_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[4],
-    )
-    render_follow_up_convergence(payload)
-    render_gap_panel(
-        payload["intent_gap_report"],
-        clarification_needed=bool(payload.get("final_intent_frame", {}).get("clarification_needed")),
-        frame=payload["final_intent_frame"],
-        follow_up_suggestion=payload.get("follow_up_suggestion"),
-    )
-
-    render_section_header(
-        5,
-        t("topk_recommendations"),
-        t("topk_recommendations_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[5],
-    )
-    render_result_change_summary(payload)
-    st.caption(
-        t(
-            "results_caption",
-            candidate_pool=payload.get("candidate_pool_size", 0),
-            result_count=len(payload.get("top_k_results", [])),
-            history_id=payload.get("history_id"),
+    st.markdown("<div id='pc-intent-workspace'></div>", unsafe_allow_html=True)
+    with st.expander("检索理解与追问", expanded=intent_expanded):
+        render_follow_up_convergence(payload)
+        render_intent_panel(payload["final_intent_frame"], payload.get("follow_up_suggestion"))
+        render_gap_panel(
+            payload["intent_gap_report"],
+            clarification_needed=bool(payload.get("final_intent_frame", {}).get("clarification_needed")),
+            frame=payload["final_intent_frame"],
+            follow_up_suggestion=payload.get("follow_up_suggestion"),
         )
-    )
+
+    st.markdown("<div id='pc-runtime-workspace'></div>", unsafe_allow_html=True)
+    with st.expander("运行过程 / 工作台", expanded=runtime_expanded):
+        render_runtime_workspace(stats, payload, bool(app_state))
+
     saved_ids = set(get_saved_paper_ids())
-    if not payload.get("top_k_results"):
-        st.warning(t("no_results"))
-    else:
-        for rank, result in enumerate(payload["top_k_results"], start=1):
-            render_result_summary_card(rank, result, saved_ids)
-            if rank < len(payload["top_k_results"]):
-                st.divider()
+    render_query_information_rail(payload)
+    result_col, detail_col = st.columns([1.18, 1.08], gap="large")
+    with result_col:
+        render_result_stream_panel(payload, saved_ids)
+    with detail_col:
+        render_selected_result_panel(payload, saved_ids, show_raw_json)
 
-    render_section_header(
-        6,
-        t("paper_details"),
-        t("paper_details_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[6],
-    )
-    if not payload.get("top_k_results"):
-        st.info(t("no_results"))
-    else:
-        for rank, result in enumerate(payload["top_k_results"], start=1):
-            evidence_pack = payload.get("paper_evidence_packs", {}).get(result["paper_id"], {})
-            render_result_detail_card(rank, result, evidence_pack, saved_ids, show_raw_json)
+    with st.expander("完整链路 JSON", expanded=False):
+        st.json(payload)
 
-    if show_raw_json:
-        with st.expander(t("full_pipeline_json")):
-            st.json(payload)
-
-    render_section_header(
-        7,
-        t("management_workspace"),
-        t("management_workspace_caption"),
-        anchor_id=STEP_SECTION_ANCHORS[7],
-    )
+    st.divider()
     render_management_area(demo_queries, show_header=False)
+    if pending_anchor_scroll:
+        render_anchor_autoscroll(pending_anchor_scroll)
 
 
 if __name__ == "__main__":
