@@ -154,5 +154,13 @@
     ],
     "error": "LLM query-paper match batch returned no results.",
     "timestamp": "2026-04-21T11:30:21.256692+00:00"
+  },
+  {
+    "stage": "query_paper_match_batch",
+    "paper_ids": [
+      "2406.07348"
+    ],
+    "error": "LLM query-paper match batch returned no results.",
+    "timestamp": "2026-04-23T02:27:42.777650+00:00"
   }
 ]

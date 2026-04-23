@@ -1,0 +1,178 @@
+<svg width="1600" height="1040" viewBox="0 0 1600 1040" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="40" x2="1480" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFF"/>
+      <stop offset="1" stop-color="#EEF4FB"/>
+    </linearGradient>
+    <linearGradient id="hero" x1="248" y1="112" x2="1392" y2="280" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F5FAFF"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#265EBD"/>
+      <stop offset="1" stop-color="#1F4E9F"/>
+    </linearGradient>
+    <filter id="shadow" x="-40" y="-40" width="1680" height="1120" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#284A7C" flood-opacity="0.12"/>
+    </filter>
+    <filter id="soft" x="-30" y="-30" width="1660" height="1100" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#29486E" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1040" rx="28" fill="url(#bg)"/>
+  <circle cx="1368" cy="112" r="160" fill="#D6E7FF" fill-opacity="0.38"/>
+  <circle cx="182" cy="148" r="132" fill="#FFE7C7" fill-opacity="0.5"/>
+
+  <rect x="28" y="24" width="1544" height="992" rx="28" fill="#FBFDFF" stroke="#D7E3F3"/>
+
+  <g filter="url(#soft)">
+    <rect x="56" y="54" width="112" height="930" rx="28" fill="#163C68"/>
+    <text x="82" y="104" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">PC</text>
+    <text x="82" y="132" fill="#BBD3F4" font-family="Arial, Helvetica, sans-serif" font-size="14">PaperCompass</text>
+
+    <rect x="74" y="180" width="76" height="58" rx="18" fill="#285EA8"/>
+    <circle cx="96" cy="209" r="7" fill="#DFF0FF"/>
+    <rect x="109" y="202" width="26" height="4" rx="2" fill="#DFF0FF"/>
+    <rect x="109" y="211" width="18" height="4" rx="2" fill="#DFF0FF"/>
+
+    <rect x="74" y="254" width="76" height="58" rx="18" fill="#234D87"/>
+    <rect x="89" y="273" width="45" height="5" rx="2.5" fill="#A7C4EA"/>
+    <rect x="89" y="285" width="36" height="5" rx="2.5" fill="#A7C4EA"/>
+    <rect x="89" y="297" width="28" height="5" rx="2.5" fill="#A7C4EA"/>
+
+    <rect x="74" y="328" width="76" height="58" rx="18" fill="#234D87"/>
+    <circle cx="98" cy="357" r="8" fill="#A7C4EA"/>
+    <circle cx="122" cy="357" r="8" fill="#7EA6DA"/>
+
+    <rect x="74" y="402" width="76" height="58" rx="18" fill="#234D87"/>
+    <rect x="89" y="421" width="46" height="20" rx="10" fill="#A7C4EA"/>
+
+    <text x="82" y="926" fill="#BBD3F4" font-family="Arial, Helvetica, sans-serif" font-size="13">Library</text>
+    <text x="82" y="948" fill="#7EA6DA" font-family="Arial, Helvetica, sans-serif" font-size="13">History</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="196" y="54" width="1348" height="930" rx="30" fill="#F6FAFF" stroke="#D6E2F2"/>
+  </g>
+
+  <rect x="228" y="82" width="1284" height="64" rx="22" fill="#FFFFFF" stroke="#D7E3F3"/>
+  <text x="260" y="120" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">PaperCompass Workbench</text>
+  <rect x="1288" y="96" width="94" height="36" rx="18" fill="#EEF4FF"/>
+  <text x="1316" y="119" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">Library</text>
+  <rect x="1396" y="96" width="84" height="36" rx="18" fill="#163C68"/>
+  <text x="1422" y="119" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">Profile</text>
+
+  <g filter="url(#soft)">
+    <rect x="228" y="168" width="1284" height="164" rx="28" fill="url(#hero)" stroke="#D6E2F2"/>
+  </g>
+  <text x="264" y="214" fill="#6C7E95" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">NATURAL-LANGUAGE DISCOVERY</text>
+  <text x="264" y="252" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700">One search bar, then explainable paper exploration</text>
+  <text x="264" y="284" fill="#60738B" font-family="Arial, Helvetica, sans-serif" font-size="16">Turn the current multi-block experience into a focused query workspace with explainable results, filters, and a detail drawer.</text>
+
+  <rect x="264" y="304" width="760" height="52" rx="26" fill="#FFFFFF" stroke="#CFE0F4"/>
+  <circle cx="294" cy="330" r="10" fill="#7CA7E5"/>
+  <rect x="312" y="323" width="616" height="6" rx="3" fill="#9CB1C8"/>
+  <rect x="312" y="335" width="514" height="6" rx="3" fill="#D2DEEC"/>
+  <rect x="1040" y="304" width="156" height="52" rx="26" fill="url(#primary)"/>
+  <text x="1085" y="336" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Run Search</text>
+  <rect x="1210" y="304" width="132" height="52" rx="26" fill="#EAF3FF"/>
+  <text x="1240" y="336" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Refine</text>
+
+  <rect x="1128" y="204" width="336" height="82" rx="22" fill="#163C68"/>
+  <text x="1154" y="234" fill="#BBD3F4" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">WHY THIS LAYOUT</text>
+  <text x="1154" y="262" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">Search + intent summary + result stream</text>
+  <text x="1154" y="286" fill="#D9E6F7" font-family="Arial, Helvetica, sans-serif" font-size="14">Keep your system's explanation layer visible, but secondary.</text>
+
+  <rect x="228" y="356" width="188" height="596" rx="24" fill="#FFFFFF" stroke="#D6E2F2"/>
+  <text x="256" y="394" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700">Filters</text>
+  <text x="256" y="418" fill="#6B7D93" font-family="Arial, Helvetica, sans-serif" font-size="14">Sticky left rail</text>
+
+  <rect x="256" y="444" width="132" height="30" rx="15" fill="#EAF3FF"/>
+  <text x="290" y="464" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">Recent</text>
+  <rect x="256" y="484" width="112" height="30" rx="15" fill="#F4F7FB"/>
+  <text x="286" y="504" fill="#51647C" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">Survey</text>
+  <rect x="256" y="524" width="144" height="30" rx="15" fill="#F4F7FB"/>
+  <text x="288" y="544" fill="#51647C" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">Method</text>
+  <rect x="256" y="564" width="120" height="30" rx="15" fill="#F4F7FB"/>
+  <text x="286" y="584" fill="#51647C" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700">Open PDF</text>
+
+  <text x="256" y="640" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Intent Brief</text>
+  <rect x="256" y="656" width="132" height="28" rx="14" fill="#FFF5E9"/>
+  <text x="274" y="674" fill="#AA6A15" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Survey Lookup</text>
+  <rect x="256" y="692" width="116" height="28" rx="14" fill="#EAF7F0"/>
+  <text x="283" y="710" fill="#1E7A50" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">RAG</text>
+  <rect x="256" y="728" width="136" height="28" rx="14" fill="#EAF3FF"/>
+  <text x="284" y="746" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">last 2 years</text>
+
+  <text x="256" y="812" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Quick actions</text>
+  <rect x="256" y="830" width="132" height="42" rx="16" fill="#163C68"/>
+  <text x="290" y="856" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">Saved</text>
+  <rect x="256" y="884" width="132" height="42" rx="16" fill="#EEF4FF"/>
+  <text x="286" y="910" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">History</text>
+
+  <rect x="436" y="356" width="646" height="596" rx="24" fill="#FFFFFF" stroke="#D6E2F2"/>
+  <text x="468" y="394" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700">Result Stream</text>
+  <text x="468" y="418" fill="#6B7D93" font-family="Arial, Helvetica, sans-serif" font-size="14">Compact cards inspired by scholar-style search results</text>
+
+  <rect x="468" y="442" width="582" height="146" rx="22" fill="#F9FBFF" stroke="#D6E2F2"/>
+  <rect x="492" y="462" width="90" height="24" rx="12" fill="#EAF3FF"/>
+  <text x="516" y="478" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Top 1</text>
+  <rect x="594" y="462" width="126" height="24" rx="12" fill="#EAF7F0"/>
+  <text x="620" y="478" fill="#1E7A50" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Intent match</text>
+  <text x="492" y="516" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700">Paper title with one-line relevance explanation</text>
+  <text x="492" y="544" fill="#66798E" font-family="Arial, Helvetica, sans-serif" font-size="14">Author list | 2025 | arXiv / venue | PDF | Save | Cite</text>
+  <text x="492" y="570" fill="#60738B" font-family="Arial, Helvetica, sans-serif" font-size="14">TLDR: a 2-line abstract preview, plus matched constraints and one evidence snippet.</text>
+  <rect x="492" y="590" width="116" height="28" rx="14" fill="#FFF5E9"/>
+  <text x="514" y="608" fill="#AA6A15" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Why recommended</text>
+  <rect x="620" y="590" width="122" height="28" rx="14" fill="#EAF3FF"/>
+  <text x="650" y="608" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Matched filters</text>
+
+  <rect x="468" y="610" width="582" height="122" rx="22" fill="#FFFFFF" stroke="#E0EAF5"/>
+  <text x="492" y="646" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Top 2 result with lighter metadata and faster scanning</text>
+  <text x="492" y="672" fill="#66798E" font-family="Arial, Helvetica, sans-serif" font-size="14">No giant expander by default; open detail drawer instead of pushing page length.</text>
+  <rect x="492" y="690" width="94" height="26" rx="13" fill="#EEF4FF"/>
+  <text x="520" y="707" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Open detail</text>
+
+  <rect x="468" y="748" width="582" height="122" rx="22" fill="#FFFFFF" stroke="#E0EAF5"/>
+  <text x="492" y="784" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Top 3 result</text>
+  <text x="492" y="810" fill="#66798E" font-family="Arial, Helvetica, sans-serif" font-size="14">Secondary explanation is still available, but not visually dominant.</text>
+  <rect x="492" y="828" width="118" height="26" rx="13" fill="#EAF7F0"/>
+  <text x="520" y="845" fill="#1E7A50" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Save to library</text>
+
+  <rect x="1102" y="356" width="410" height="596" rx="24" fill="#FFFFFF" stroke="#D6E2F2"/>
+  <text x="1134" y="394" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700">Detail Drawer</text>
+  <text x="1134" y="418" fill="#6B7D93" font-family="Arial, Helvetica, sans-serif" font-size="14">Open on row click, not as a long page expander</text>
+
+  <rect x="1134" y="446" width="346" height="66" rx="18" fill="#163C68"/>
+  <text x="1158" y="474" fill="#BBD3F4" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">DETAIL HEADER</text>
+  <text x="1158" y="500" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700">Selected paper title + actions</text>
+
+  <rect x="1134" y="530" width="160" height="30" rx="15" fill="#EAF3FF"/>
+  <text x="1173" y="550" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Abstract</text>
+  <rect x="1304" y="530" width="176" height="30" rx="15" fill="#F4F7FB"/>
+  <text x="1343" y="550" fill="#576B84" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700">Evidence</text>
+
+  <rect x="1134" y="578" width="346" height="104" rx="18" fill="#F9FBFF" stroke="#E0EAF5"/>
+  <text x="1156" y="610" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Why it fits your query</text>
+  <text x="1156" y="638" fill="#64788F" font-family="Arial, Helvetica, sans-serif" font-size="14">- matched scene, task, time range</text>
+  <text x="1156" y="662" fill="#64788F" font-family="Arial, Helvetica, sans-serif" font-size="14">- one or two snippet-level evidence blocks</text>
+
+  <rect x="1134" y="700" width="346" height="112" rx="18" fill="#FFFFFF" stroke="#E0EAF5"/>
+  <text x="1156" y="732" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Structured semantic card</text>
+  <rect x="1156" y="748" width="92" height="24" rx="12" fill="#FFF5E9"/>
+  <text x="1178" y="764" fill="#AA6A15" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700">Method</text>
+  <rect x="1258" y="748" width="102" height="24" rx="12" fill="#EAF7F0"/>
+  <text x="1283" y="764" fill="#1E7A50" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700">Dataset</text>
+  <rect x="1370" y="748" width="88" height="24" rx="12" fill="#EAF3FF"/>
+  <text x="1392" y="764" fill="#255AA9" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700">Metric</text>
+  <text x="1156" y="794" fill="#64788F" font-family="Arial, Helvetica, sans-serif" font-size="14">Keep JSON available, but default to a readable summary view.</text>
+
+  <rect x="1134" y="830" width="346" height="94" rx="18" fill="#F9FBFF" stroke="#E0EAF5"/>
+  <text x="1156" y="862" fill="#173557" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700">Saved / History / Suggestions</text>
+  <text x="1156" y="888" fill="#64788F" font-family="Arial, Helvetica, sans-serif" font-size="14">Library and history become lightweight tabs, not dense text walls.</text>
+
+  <rect x="228" y="972" width="1284" height="24" rx="12" fill="#EEF4FB"/>
+  <rect x="228" y="972" width="328" height="24" rx="12" fill="url(#primary)"/>
+  <text x="574" y="989" fill="#4C617A" font-family="Arial, Helvetica, sans-serif" font-size="12">Collapsible process strip: Intent Parse -> Retrieval -> Match -> Rerank -> Explain</text>
+</svg>

@@ -138,5 +138,12 @@
     "error": "OpenAI 测试失败: gpt-5.1: HTTP 502",
     "parser": "llm_required",
     "timestamp": "2026-04-12T12:54:15.821136+00:00"
+  },
+  {
+    "mode": "follow_up_merge",
+    "reply_text": "我更偏向先看近两年的最新论文，同时也想补充几篇更早的代表性经典工作作对照。",
+    "error": "gpt-5: 模型【gpt-5】不存在（traceid: 0d4a622fc5e8a818828f7907df34cf43）",
+    "parser": "llm_required",
+    "timestamp": "2026-04-23T06:33:06.467378+00:00"
   }
 ]
