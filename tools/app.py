@@ -11,6 +11,9 @@ import html
 import re
 from typing import Any, Dict, Iterable, List
 
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -460,6 +463,10 @@ def inject_runtime_process_styles() -> None:
     padding-bottom: 4rem;
 }
 
+.block-container > div[data-testid="stVerticalBlock"] {
+    gap: 1.35rem;
+}
+
 section[data-testid="stSidebar"] {
     background:
         radial-gradient(circle at top, rgba(47, 95, 167, 0.14), transparent 22%),
@@ -472,7 +479,16 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid rgba(201, 216, 241, 0.90);
     background: var(--pc-surface);
     box-shadow: var(--pc-shadow);
-    padding: 0.42rem 0.55rem;
+    padding: 0.9rem 1rem;
+    margin: 0.2rem 0 0.95rem;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stVerticalBlock"] {
+    gap: 0.82rem;
+}
+
+div[data-testid="column"] > div[data-testid="stVerticalBlock"] {
+    gap: 1rem;
 }
 
 div[data-testid="stMetric"] {
@@ -584,12 +600,12 @@ details[data-testid="stExpander"] summary {
     overflow: hidden;
     display: flex;
     justify-content: space-between;
-    gap: 22px;
-    align-items: flex-start;
+    gap: 24px;
+    align-items: stretch;
     border: 1px solid rgba(201, 216, 241, 0.92);
     border-radius: 28px;
     padding: 24px 26px 22px;
-    margin-bottom: 1.1rem;
+    margin-bottom: 1.45rem;
     background:
         radial-gradient(circle at top right, rgba(217, 152, 77, 0.18), transparent 26%),
         radial-gradient(circle at left center, rgba(47, 95, 167, 0.14), transparent 22%),
@@ -600,6 +616,10 @@ details[data-testid="stExpander"] summary {
 .pc-hero-copy {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 20px;
 }
 
 .pc-hero-kicker {
@@ -631,10 +651,152 @@ details[data-testid="stExpander"] summary {
 }
 
 .pc-hero-meta {
-    width: min(360px, 34%);
-    min-width: 260px;
+    width: min(520px, 42%);
+    min-width: 380px;
     display: grid;
+    grid-template-columns: 0.86fr 1.14fr;
+    gap: 12px;
+}
+
+.pc-hero-dashboard {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
+}
+
+.pc-hero-stat {
+    border-radius: 16px;
+    border: 1px solid rgba(201, 216, 241, 0.9);
+    background: rgba(255, 255, 255, 0.76);
+    padding: 12px 13px;
+}
+
+.pc-hero-stat-label {
+    color: var(--pc-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.pc-hero-stat-value {
+    color: var(--pc-text);
+    font-size: 1.38rem;
+    line-height: 1.08;
+    font-weight: 900;
+}
+
+.pc-hero-ring-card,
+.pc-hero-bars-card {
+    border-radius: 20px;
+    border: 1px solid rgba(201, 216, 241, 0.95);
+    background: rgba(255, 255, 255, 0.78);
+    padding: 14px;
+    min-width: 0;
+}
+
+.pc-hero-ring {
+    width: 142px;
+    aspect-ratio: 1;
+    margin: 4px auto 10px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(circle at center, #ffffff 0 56%, transparent 57%),
+        conic-gradient(var(--pc-green) var(--pc-ring-value), rgba(201,216,241,0.72) 0);
+    box-shadow: inset 0 0 0 1px rgba(201,216,241,0.72);
+}
+
+.pc-hero-ring-value {
+    color: var(--pc-text);
+    font-size: 1.46rem;
+    font-weight: 900;
+}
+
+.pc-hero-ring-label,
+.pc-hero-bars-title,
+.pc-hero-path-label {
+    color: var(--pc-muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    font-weight: 800;
+}
+
+.pc-hero-bar-row {
+    margin-bottom: 11px;
+}
+
+.pc-hero-bar-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    color: var(--pc-text);
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.pc-hero-bar-track {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(201, 216, 241, 0.55);
+    overflow: hidden;
+}
+
+.pc-hero-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--pc-blue), var(--pc-green));
+}
+
+.pc-hero-status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    grid-column: 1 / -1;
+}
+
+.pc-hero-status {
+    border-radius: 14px;
+    border: 1px solid rgba(201, 216, 241, 0.88);
+    background: rgba(248, 251, 255, 0.82);
+    padding: 9px 10px;
+    color: var(--pc-text);
+    font-size: 0.78rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.pc-hero-path {
+    margin-top: auto;
+    border-radius: 18px;
+    border: 1px dashed rgba(159, 183, 221, 0.95);
+    background: rgba(248, 251, 255, 0.78);
+    padding: 12px 14px;
+    color: var(--pc-text);
+    font-size: 0.86rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
+
+.pc-hero-pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.pc-hero-node {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(201, 216, 241, 0.95);
+    background: rgba(255,255,255,0.72);
+    padding: 5px 10px;
+    color: var(--pc-blue);
+    font-size: 0.78rem;
+    font-weight: 900;
 }
 
 .pc-chip-row {
@@ -669,7 +831,114 @@ details[data-testid="stExpander"] summary {
 }
 
 .pc-panel-lead {
-    margin-bottom: 0.9rem;
+    margin-bottom: 1.05rem;
+}
+
+.pc-section-spacer {
+    height: 1.1rem;
+}
+
+.pc-section-band {
+    margin: 1.65rem 0 0.6rem;
+    border-top: 1px solid rgba(201, 216, 241, 0.82);
+}
+
+.pc-search-stage {
+    border-radius: 28px;
+    border: 1px solid rgba(201, 216, 241, 0.95);
+    background:
+        radial-gradient(circle at 88% 12%, rgba(31, 138, 91, 0.10), transparent 26%),
+        linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,250,255,0.98));
+    box-shadow: 0 18px 48px rgba(25, 58, 112, 0.10);
+    padding: 26px 28px 24px;
+    margin-bottom: 1.35rem;
+}
+
+.pc-search-stage + div[data-testid="stVerticalBlock"] {
+    margin-top: -0.4rem;
+}
+
+.pc-search-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+}
+
+.pc-search-title {
+    color: var(--pc-text);
+    font-size: 1.38rem;
+    line-height: 1.28;
+    font-weight: 900;
+}
+
+.pc-search-caption {
+    color: var(--pc-muted);
+    font-size: 0.9rem;
+    line-height: 1.62;
+    margin-top: 5px;
+}
+
+.pc-search-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(201,216,241,0.95);
+    background: rgba(248,251,255,0.86);
+    padding: 7px 11px;
+    color: var(--pc-blue);
+    font-size: 0.8rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.pc-search-stage div[data-testid="stTextArea"] textarea {
+    min-height: 132px !important;
+    font-size: 1.02rem !important;
+    border-radius: 22px !important;
+    background: #ffffff !important;
+}
+
+.pc-search-stage .stButton > button[kind="primary"] {
+    min-height: 50px;
+    border-radius: 18px;
+    font-size: 0.98rem;
+}
+
+.pc-demo-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.pc-result-card-compact {
+    padding: 0.2rem 0 0.1rem;
+}
+
+.pc-compact-demo [data-testid="stVerticalBlock"] {
+    gap: 0.45rem;
+}
+
+.pc-compact-demo .pc-panel-lead {
+    margin-bottom: 0.25rem;
+}
+
+.pc-compact-demo .pc-panel-title {
+    font-size: 1.02rem;
+}
+
+.pc-compact-demo .pc-panel-caption {
+    font-size: 0.82rem;
+}
+
+.pc-compact-demo .stButton > button {
+    min-height: 36px;
+    border-radius: 14px;
+    padding: 0.28rem 0.65rem;
+    font-size: 0.86rem;
+    box-shadow: none;
 }
 
 .pc-panel-kicker {
@@ -703,7 +972,7 @@ details[data-testid="stExpander"] summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 12px;
-    margin: 0.4rem 0 0.6rem;
+    margin: 0.55rem 0 0.9rem;
 }
 
 .pc-kpi-card {
@@ -890,7 +1159,7 @@ details[data-testid="stExpander"] summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
-    margin: 0.45rem 0 0.82rem;
+    margin: 0.55rem 0 1rem;
 }
 
 .pc-summary-card {
@@ -919,7 +1188,7 @@ details[data-testid="stExpander"] summary {
     border: 1px solid rgba(201, 216, 241, 0.92);
     background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,250,255,0.98));
     padding: 14px 16px;
-    margin-bottom: 0.82rem;
+    margin-bottom: 1rem;
 }
 
 .pc-context-label {
@@ -939,7 +1208,7 @@ details[data-testid="stExpander"] summary {
 }
 
 .pc-result-snippet {
-    margin: 0.45rem 0 0.18rem;
+    margin: 0.75rem 0 0.35rem;
     padding: 12px 14px;
     border-radius: 14px;
     border: 1px solid rgba(201, 216, 241, 0.86);
@@ -987,6 +1256,11 @@ div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlock
     .pc-hero-meta {
         width: 100%;
         min-width: 0;
+        grid-template-columns: 1fr;
+    }
+    .pc-hero-dashboard,
+    .pc-hero-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlockBorderWrapper"] {
         position: static;
@@ -1227,7 +1501,74 @@ div[data-testid="column"]:has(#pc-detail-panel) div[data-testid="stVerticalBlock
 }
 .pc-stage-list {
     display: grid;
+    gap: 12px;
+}
+
+.pc-pipeline-strip {
+    display: flex;
+    align-items: stretch;
     gap: 10px;
+    overflow-x: auto;
+    padding: 4px 2px 12px;
+    scrollbar-gutter: stable;
+}
+
+.pc-pipeline-node {
+    position: relative;
+    flex: 1 0 132px;
+    min-height: 78px;
+    border-radius: 18px;
+    border: 1px solid rgba(201, 216, 241, 0.92);
+    background: rgba(255, 255, 255, 0.76);
+    padding: 12px 12px 10px;
+}
+
+.pc-pipeline-node::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -10px;
+    width: 10px;
+    height: 2px;
+    background: rgba(159, 183, 221, 0.9);
+}
+
+.pc-pipeline-node:last-child::after {
+    display: none;
+}
+
+.pc-pipeline-node.is-completed {
+    border-color: rgba(31, 138, 91, 0.42);
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(233,248,239,0.92));
+}
+
+.pc-pipeline-node.is-running {
+    border-color: rgba(217, 152, 77, 0.62);
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,244,226,0.96));
+}
+
+.pc-pipeline-status {
+    color: var(--pc-muted);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.pc-pipeline-label {
+    color: var(--pc-text);
+    font-size: 0.88rem;
+    line-height: 1.34;
+    font-weight: 900;
+    margin-bottom: 8px;
+}
+
+.pc-pipeline-meta {
+    color: var(--pc-muted);
+    font-size: 0.75rem;
+    line-height: 1.42;
+    font-weight: 700;
 }
 .pc-stage-card {
     position: relative;
@@ -1796,6 +2137,38 @@ def render_stage_events(events: Iterable[Dict[str, Any]], *, live: bool = False,
     if show_header:
         st.subheader(t("run_process"))
     st.markdown(markup, unsafe_allow_html=True)
+
+
+def render_pipeline_strip(events: Iterable[Dict[str, Any]]) -> None:
+    normalized = summarize_stage_events(events)
+    if not normalized:
+        return
+    nodes: List[str] = []
+    for event in normalized:
+        status = clean_text(event.get("status", "pending"))
+        css_class = "pc-pipeline-node"
+        if status == "completed":
+            css_class += " is-completed"
+        elif status == "running":
+            css_class += " is-running"
+        status_label = {
+            "completed": "Done",
+            "running": "Running",
+            "pending": "Pending",
+        }.get(status, status or "Pending")
+        meta_parts = build_stage_event_meta(event)
+        nodes.append(
+            "".join(
+                [
+                    f"<div class='{css_class}'>",
+                    f"<div class='pc-pipeline-status'>{html.escape(status_label)}</div>",
+                    f"<div class='pc-pipeline-label'>{html.escape(clean_text(event.get('label') or event.get('stage')))}</div>",
+                    f"<div class='pc-pipeline-meta'>{html.escape(' | '.join(meta_parts[:2]) or '-')}</div>",
+                    "</div>",
+                ]
+            )
+        )
+    st.markdown(f"<div class='pc-pipeline-strip'>{''.join(nodes)}</div>", unsafe_allow_html=True)
 
 
 def summarize_models_used(payload: Dict[str, Any]) -> List[str]:
@@ -2402,6 +2775,64 @@ def render_hero_banner(stats: Dict[str, int]) -> None:
     st.markdown(hero, unsafe_allow_html=True)
 
 
+def render_hero_dashboard(stats: Dict[str, int]) -> None:
+    dataset_info = get_active_dataset_info()
+    papers = max(int(stats.get("papers", 0) or 0), 0)
+    sections = max(int(stats.get("sections", 0) or 0), 0)
+    fts_rows = max(int(stats.get("fts_rows", 0) or 0), 0)
+    semantic_cards = max(int(stats.get("semantic_cards", 0) or 0), 0)
+    histories = max(int(stats.get("intent_histories", 0) or 0), 0)
+    saved = max(int(stats.get("saved_papers", 0) or 0), 0)
+    card_coverage = min(semantic_cards / max(papers, 1), 1.0)
+    section_density = min(sections / max(papers * 12, 1), 1.0)
+    fts_density = min(fts_rows / max(papers * 16, 1), 1.0)
+    db_path = relative_to_project(get_default_db_path())
+    llm_status = "已配置 API Key" if OPENAI_API_KEY else "未配置 API Key"
+    hero = "".join(
+        [
+            "<div class='pc-hero'>",
+            "<div class='pc-hero-copy'>",
+            "<div>",
+            "<div class='pc-hero-kicker'>基于用户意图理解的学术论文检索与管理系统</div>",
+            "<div class='pc-hero-title'>PaperCompass 检索工作台</div>",
+            "<div class='pc-hero-subtitle'>自然语言查询进入 IntentFrame 解析、混合召回、Query-Paper Match、重排解释和 Gap 诊断，形成可追问、可解释的论文检索闭环。</div>",
+            "</div>",
+            "<div class='pc-hero-dashboard'>",
+            f"<div class='pc-hero-stat'><div class='pc-hero-stat-label'>论文资产</div><div class='pc-hero-stat-value'>{papers:,}</div></div>",
+            f"<div class='pc-hero-stat'><div class='pc-hero-stat-label'>章节证据</div><div class='pc-hero-stat-value'>{sections:,}</div></div>",
+            f"<div class='pc-hero-stat'><div class='pc-hero-stat-label'>语义卡片</div><div class='pc-hero-stat-value'>{semantic_cards:,}</div></div>",
+            f"<div class='pc-hero-stat'><div class='pc-hero-stat-label'>检索历史</div><div class='pc-hero-stat-value'>{histories:,}</div></div>",
+            "</div>",
+            "<div class='pc-hero-path'>",
+            f"<div class='pc-hero-path-label'>当前数据集 / 数据库</div>{html.escape(str(dataset_info.get('label', 'Dataset')))} · {html.escape(db_path)}",
+            "</div>",
+            "</div>",
+            "<div class='pc-hero-meta'>",
+            f"<div class='pc-hero-ring-card'><div class='pc-hero-ring' style='--pc-ring-value:{card_coverage * 100:.1f}%'><div class='pc-hero-ring-value'>{card_coverage * 100:.0f}%</div></div><div class='pc-hero-ring-label'>语义卡覆盖率<br>{semantic_cards:,} / {papers:,}</div></div>",
+            "<div class='pc-hero-bars-card'>",
+            "<div class='pc-hero-bars-title'>检索资产密度</div>",
+            f"<div class='pc-hero-bar-row'><div class='pc-hero-bar-top'><span>语义卡</span><span>{card_coverage * 100:.1f}%</span></div><div class='pc-hero-bar-track'><div class='pc-hero-bar-fill' style='width:{card_coverage * 100:.1f}%'></div></div></div>",
+            f"<div class='pc-hero-bar-row'><div class='pc-hero-bar-top'><span>章节证据</span><span>{sections / max(papers, 1):.1f}/篇</span></div><div class='pc-hero-bar-track'><div class='pc-hero-bar-fill' style='width:{section_density * 100:.1f}%'></div></div></div>",
+            f"<div class='pc-hero-bar-row'><div class='pc-hero-bar-top'><span>FTS 索引</span><span>{fts_rows / max(papers, 1):.1f}/篇</span></div><div class='pc-hero-bar-track'><div class='pc-hero-bar-fill' style='width:{fts_density * 100:.1f}%'></div></div></div>",
+            "</div>",
+            "<div class='pc-hero-status-grid'>",
+            f"<div class='pc-hero-status'>LLM：{html.escape(llm_status)}</div>",
+            f"<div class='pc-hero-status'>收藏：{saved:,} 篇</div>",
+            "<div class='pc-hero-status'>链路：Intent -> Recall -> Match -> Rerank</div>",
+            "</div>",
+            "<div class='pc-hero-pipeline'>",
+            "<span class='pc-hero-node'>IntentFrame</span>",
+            "<span class='pc-hero-node'>Hybrid Recall</span>",
+            "<span class='pc-hero-node'>Query-Paper Match</span>",
+            "<span class='pc-hero-node'>Gap Analysis</span>",
+            "</div>",
+            "</div>",
+            "</div>",
+        ]
+    )
+    st.markdown(hero, unsafe_allow_html=True)
+
+
 def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, Any]]) -> None:
     st.markdown(f"<div id='{SEARCH_WORKSPACE_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
     with st.container(border=True):
@@ -2452,18 +2883,10 @@ def render_search_workspace(stats: Dict[str, int], demo_queries: List[Dict[str, 
 
     with st.container(border=True):
         render_panel_lead("快速开始", "点击即可回填到检索框。", "常用示例")
-        render_metric_grid(
-            [
-                (t("papers_metric"), stats.get("papers", 0)),
-                (t("sections_metric"), stats.get("sections", 0)),
-                (t("semantic_cards_metric"), stats.get("semantic_cards", 0)),
-                (t("history_metric"), stats.get("intent_histories", 0)),
-            ]
-        )
-        demo_cols = st.columns(3, gap="medium")
+        demo_cols = st.columns(5, gap="small")
         for index, item in enumerate(demo_queries, start=1):
-            with demo_cols[(index - 1) % 3]:
-                label = truncate_text(item.get("query", ""), 26)
+            with demo_cols[(index - 1) % 5]:
+                label = truncate_text(item.get("query", ""), 18)
                 if st.button(f"示例 {index} · {label}", key=f"main_demo_{index}", use_container_width=True):
                     apply_demo_query(item, auto_run=False)
                     st.rerun()
@@ -2480,6 +2903,20 @@ def render_overview(stats: Dict[str, int]) -> None:
         (t("saved_metric"), stats["saved_papers"]),
     ]
     render_metric_grid(metrics)
+    overview_left, overview_right = st.columns([1, 1], gap="large")
+    with overview_left:
+        render_asset_coverage_chart(stats)
+    with overview_right:
+        coverage = 0.0
+        if stats.get("papers", 0):
+            coverage = min(stats.get("semantic_cards", 0) / max(stats.get("papers", 1), 1), 1.0)
+        render_summary_strip(
+            [
+                ("语义卡覆盖率", f"{coverage * 100:.1f}%"),
+                ("平均章节数", f"{stats.get('sections', 0) / max(stats.get('papers', 1), 1):.1f}"),
+                ("FTS 索引密度", f"{stats.get('fts_rows', 0) / max(stats.get('papers', 1), 1):.1f}"),
+            ]
+        )
 
 
 def render_system_status_panel(stats: Dict[str, int], state_loaded: bool) -> None:
@@ -2538,6 +2975,8 @@ def render_runtime_workspace(stats: Dict[str, int], payload: Dict[str, Any] | No
                 stage_events = payload.get("stage_events", st.session_state.get("latest_stage_events", []))
                 normalized = [event for event in stage_events if clean_text(event.get("label") or event.get("stage"))]
                 if normalized:
+                    render_pipeline_strip(normalized)
+                    render_stage_timeline_chart(normalized)
                     st.caption(t("run_process_collapsed_hint"))
                     with st.expander(f"{t('run_process_details')}（{len(normalized)}）", expanded=False):
                         render_stage_events(normalized, live=False, show_header=False)
@@ -2583,6 +3022,176 @@ def coerce_score(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def clamp_score(value: Any) -> float:
+    return max(0.0, min(coerce_score(value), 1.0))
+
+
+def render_plotly_chart(fig: go.Figure, *, height: int = 260, key: str | None = None) -> None:
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=34, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Microsoft YaHei UI, Microsoft YaHei, sans-serif", color="#17304f", size=12),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.28, xanchor="center", x=0.5),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
+
+
+def render_asset_coverage_chart(stats: Dict[str, int]) -> None:
+    papers = max(int(stats.get("papers", 0) or 0), 0)
+    semantic_cards = max(int(stats.get("semantic_cards", 0) or 0), 0)
+    missing_cards = max(papers - semantic_cards, 0)
+    if not papers:
+        return
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=["已生成语义卡片", "待补全语义卡片"],
+                values=[min(semantic_cards, papers), missing_cards],
+                hole=0.62,
+                marker=dict(colors=["#1f8a5b", "#d9984d"]),
+                textinfo="label+percent",
+            )
+        ]
+    )
+    fig.update_layout(title="语义资产覆盖率")
+    render_plotly_chart(fig, height=250, key="asset_coverage_chart")
+
+
+def iter_intent_slots(frame: Dict[str, Any]) -> List[tuple[str, Dict[str, Any]]]:
+    slots: List[tuple[str, Dict[str, Any]]] = []
+    for group, values in frame.items():
+        if not isinstance(values, dict):
+            continue
+        if "status" in values:
+            slots.append((group, values))
+            continue
+        for key, slot in values.items():
+            if isinstance(slot, dict) and "status" in slot:
+                slots.append((f"{group}.{key}", slot))
+    return slots
+
+
+def render_intent_slot_chart(frame: Dict[str, Any]) -> None:
+    slots = iter_intent_slots(frame)
+    if not slots:
+        return
+    status_labels = {
+        "confirmed": "已确认",
+        "missing": "缺失",
+        "ambiguous": "模糊",
+        "inferred": "推断",
+    }
+    counts: Dict[str, int] = {}
+    for _, slot in slots:
+        status = clean_text(slot.get("status", "")) or "missing"
+        counts[status_labels.get(status, status)] = counts.get(status_labels.get(status, status), 0) + 1
+    df = pd.DataFrame({"状态": list(counts.keys()), "数量": list(counts.values())})
+    fig = px.bar(
+        df,
+        x="数量",
+        y="状态",
+        orientation="h",
+        color="状态",
+        color_discrete_map={"已确认": "#1f8a5b", "缺失": "#d9984d", "模糊": "#b15c3e", "推断": "#2f5fa7"},
+        title="意图槽位完成度",
+    )
+    fig.update_traces(marker_line_width=0)
+    fig.update_xaxes(dtick=1, showgrid=True, gridcolor="rgba(201,216,241,0.55)")
+    fig.update_yaxes(title="")
+    render_plotly_chart(fig, height=235, key="intent_slot_chart")
+
+
+def render_stage_timeline_chart(events: Iterable[Dict[str, Any]]) -> None:
+    rows: List[Dict[str, Any]] = []
+    for event in summarize_stage_events(events):
+        label = clean_text(event.get("label") or event.get("stage"))
+        if not label:
+            continue
+        duration = coerce_score(event.get("duration", 0.0))
+        rows.append(
+            {
+                "阶段": label,
+                "耗时": max(duration, 0.001 if clean_text(event.get("status")) == "completed" else 0.0),
+                "状态": clean_text(event.get("status", "pending")),
+            }
+        )
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    fig = px.bar(
+        df,
+        x="阶段",
+        y="耗时",
+        color="状态",
+        color_discrete_map={"completed": "#1f8a5b", "running": "#d9984d", "pending": "#9fb7dd"},
+        title="检索链路阶段耗时",
+    )
+    fig.update_xaxes(tickangle=-26)
+    fig.update_yaxes(title="秒", showgrid=True, gridcolor="rgba(201,216,241,0.55)")
+    render_plotly_chart(fig, height=280, key="stage_timeline_chart")
+
+
+def render_result_distribution_charts(results: List[Dict[str, Any]]) -> None:
+    if not results:
+        return
+    rows: List[Dict[str, Any]] = []
+    for rank, result in enumerate(results, start=1):
+        query_match = result.get("query_paper_match") or {}
+        rows.append(
+            {
+                "排名": f"Top {rank}",
+                "标题": truncate_text(result.get("title", ""), 42),
+                "最终分": clamp_score(result.get("final_score", 0.0)),
+                "匹配分": clamp_score(query_match.get("match_score", 0.0)),
+                "论文类型": translate_mapping_value(result.get("paper_type", ""), PAPER_TYPE_LABELS) or "未知",
+                "年份": clean_text(result.get("year_month", ""))[:4] or "未知",
+            }
+        )
+    df = pd.DataFrame(rows)
+    score_fig = go.Figure()
+    score_fig.add_trace(go.Bar(x=df["排名"], y=df["最终分"], name="最终分", marker_color="#2f5fa7"))
+    score_fig.add_trace(go.Scatter(x=df["排名"], y=df["匹配分"], name="匹配分", mode="lines+markers", line=dict(color="#d9984d", width=3)))
+    score_fig.update_layout(title="Top-K 分数分布", yaxis=dict(range=[0, 1], title="得分"))
+    render_plotly_chart(score_fig, height=285, key="result_score_distribution")
+
+    type_counts = df["论文类型"].value_counts().reset_index()
+    type_counts.columns = ["论文类型", "数量"]
+    type_fig = px.pie(type_counts, names="论文类型", values="数量", hole=0.52, title="Top-K 论文类型分布")
+    type_fig.update_traces(marker=dict(colors=["#2f5fa7", "#1f8a5b", "#d9984d", "#9fb7dd", "#b15c3e"]))
+    render_plotly_chart(type_fig, height=245, key="result_type_distribution")
+
+
+def render_result_match_radar(result: Dict[str, Any], *, key: str) -> None:
+    dimensions = [
+        ("scene_match", "场景"),
+        ("topic_match", "主题"),
+        ("constraint_match", "约束"),
+        ("paper_type_match", "类型"),
+        ("time_preference_match", "时间"),
+        ("survey_preference_match", "综述"),
+    ]
+    labels = [label for _, label in dimensions]
+    values = [clamp_score(result.get(field, 0.0)) for field, _ in dimensions]
+    if not any(values):
+        return
+    fig = go.Figure(
+        data=[
+            go.Scatterpolar(
+                r=values + values[:1],
+                theta=labels + labels[:1],
+                fill="toself",
+                name="匹配维度",
+                line=dict(color="#2f5fa7"),
+                fillcolor="rgba(47,95,167,0.22)",
+            )
+        ]
+    )
+    fig.update_layout(title="单篇论文匹配画像", polar=dict(radialaxis=dict(visible=True, range=[0, 1])))
+    render_plotly_chart(fig, height=275, key=key)
 
 
 def summarize_result_quality(results: List[Dict[str, Any]], limit: int = 5) -> Dict[str, Any]:
@@ -2815,6 +3424,26 @@ def describe_follow_up_source(suggestion_payload: Dict[str, Any]) -> str:
 
 
 def render_intent_panel(frame: Dict[str, Any], follow_up_suggestion: Dict[str, Any] | None = None) -> None:
+    chart_col, summary_col = st.columns([1, 1.25], gap="large")
+    with chart_col:
+        with st.container(border=True):
+            render_panel_lead("意图槽位诊断", "把自然语言查询拆成可检索、可追问、可重排的结构化条件。", "IntentFrame")
+            render_intent_slot_chart(frame)
+    with summary_col:
+        with st.container(border=True):
+            slots = iter_intent_slots(frame)
+            confirmed_count = sum(1 for _, slot in slots if clean_text(slot.get("status")) == "confirmed")
+            missing_count = sum(1 for _, slot in slots if clean_text(slot.get("status")) == "missing")
+            ambiguous_count = sum(1 for _, slot in slots if clean_text(slot.get("status")) == "ambiguous")
+            render_summary_strip(
+                [
+                    ("槽位总数", len(slots)),
+                    ("已确认", confirmed_count),
+                    ("缺失", missing_count),
+                    ("模糊", ambiguous_count),
+                ]
+            )
+
     col1, col2 = st.columns(2, gap="large")
     with col1:
         with st.container(border=True):
@@ -3127,6 +3756,7 @@ def render_result_stream_panel(payload: Dict[str, Any], saved_ids: set[str]) -> 
             ("平均最终分", f"{quality.get('avg_final_score', 0.0):.3f}"),
         ]
     )
+    render_result_distribution_charts(results)
     if payload.get("follow_up_reply"):
         with st.expander("这轮追问带来的变化", expanded=False):
             render_follow_up_convergence(payload)
@@ -3247,6 +3877,7 @@ def render_selected_result_panel(payload: Dict[str, Any], saved_ids: set[str], s
                 ("时间", clean_text(selected_result.get("year_month", "")) or "-"),
             ]
         )
+        render_result_match_radar(selected_result, key=f"selected_match_radar_{selected_paper_id}")
         action_cols = st.columns(2 if paper_url else 1, gap="small")
         if paper_url:
             with action_cols[0]:
@@ -3419,6 +4050,62 @@ def run_query(*, query_override: str = "", follow_up_override: str = "") -> None
 
 
 # 页面总入口：负责状态检查、表单渲染和结果展示。
+def render_search_stage(stats: Dict[str, int], demo_queries: List[Dict[str, Any]]) -> None:
+    st.markdown(f"<div id='{SEARCH_WORKSPACE_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
+    llm_status = "API Key 已配置" if OPENAI_API_KEY else "API Key 未配置"
+    st.markdown(
+        "".join(
+            [
+                "<div class='pc-search-stage'>",
+                "<div class='pc-search-head'>",
+                "<div>",
+                "<div class='pc-search-title'>输入一个论文检索目标</div>",
+                "<div class='pc-search-caption'>用自然语言描述主题、时间、论文类型或解释需求，系统会自动解析意图并重排推荐结果。</div>",
+                "</div>",
+                f"<div class='pc-search-status'>{html.escape(llm_status)} · 论文 {stats.get('papers', 0):,}</div>",
+                "</div>",
+            ]
+        ),
+        unsafe_allow_html=True,
+    )
+    st.text_area(
+        t("natural_language_query"),
+        key="query_input",
+        height=132,
+        placeholder=t("query_placeholder"),
+        label_visibility="collapsed",
+    )
+    action_col, advanced_col = st.columns([1.25, 3.75], gap="medium")
+    with action_col:
+        if st.button(t("run_search"), type="primary", use_container_width=True, key="run_search_button"):
+            queue_run_request()
+            st.rerun()
+    with advanced_col:
+        with st.expander("高级设置 / 追问补充", expanded=bool(clean_text(st.session_state.get("follow_up_input", "")))):
+            st.text_area(
+                t("optional_follow_up"),
+                key="follow_up_input",
+                height=78,
+                placeholder=t("follow_up_placeholder"),
+            )
+            config_col1, config_col2, config_col3 = st.columns(3, gap="medium")
+            with config_col1:
+                st.number_input("Top-K", min_value=3, max_value=10, value=5, step=1, key="top_k_input")
+            with config_col2:
+                st.number_input(t("candidate_pool_size"), min_value=20, max_value=200, value=120, step=10, key="candidate_pool_input")
+            with config_col3:
+                st.number_input(t("explain_limit"), min_value=3, max_value=10, value=5, step=1, key="explain_limit_input")
+
+    if demo_queries:
+        demo_cols = st.columns(min(5, max(len(demo_queries[:10]), 1)), gap="small")
+        for index, item in enumerate(demo_queries[:10], start=1):
+            with demo_cols[(index - 1) % len(demo_cols)]:
+                if st.button(f"示例 {index}", help=clean_text(item.get("query", "")), key=f"main_demo_{index}", use_container_width=True):
+                    apply_demo_query(item, auto_run=False)
+                    st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def main() -> None:
     dataset_info = get_active_dataset_info()
     st.set_page_config(page_title="PaperCompass", layout="wide", initial_sidebar_state="expanded")
@@ -3441,12 +4128,12 @@ def main() -> None:
     app_state = load_app_state()
     demo_queries = load_demo_queries()
 
-    render_hero_banner(stats)
+    render_hero_dashboard(stats)
     st.markdown(
         f"<div class='pc-note'>{html.escape(t('search_status', db_path=relative_to_project(get_default_db_path()), papers=stats.get('papers', 0), llm_status=t('api_key_configured') if OPENAI_API_KEY else t('api_key_unconfigured')))}</div>",
         unsafe_allow_html=True,
     )
-    render_search_workspace(stats, demo_queries)
+    render_search_stage(stats, demo_queries)
     st.markdown(f"<div id='{LIVE_PROCESS_SCROLL_ANCHOR}'></div>", unsafe_allow_html=True)
 
     pending_run_query = st.session_state.pop("_pending_run_query", False)
@@ -3464,17 +4151,25 @@ def main() -> None:
     pending_anchor_scroll = clean_text(st.session_state.pop("_pending_anchor_scroll", ""))
 
     if not payload:
-        st.divider()
+        st.markdown("<div class='pc-section-band'></div>", unsafe_allow_html=True)
         render_management_area(demo_queries, show_header=False)
         if pending_anchor_scroll:
             render_anchor_autoscroll(pending_anchor_scroll)
         return
 
-    intent_expanded = bool(payload.get("final_intent_frame", {}).get("clarification_needed")) or bool(
-        st.session_state.pop("_open_intent_workspace", False)
-    )
+    intent_expanded = bool(st.session_state.pop("_open_intent_workspace", False))
     runtime_expanded = bool(st.session_state.pop("_open_runtime_workspace", False))
 
+    saved_ids = set(get_saved_paper_ids())
+    st.markdown("<div class='pc-section-band'></div>", unsafe_allow_html=True)
+    render_query_information_rail(payload)
+    result_col, detail_col = st.columns([1.18, 1.08], gap="large")
+    with result_col:
+        render_result_stream_panel(payload, saved_ids)
+    with detail_col:
+        render_selected_result_panel(payload, saved_ids, show_raw_json)
+
+    st.markdown("<div class='pc-section-spacer'></div>", unsafe_allow_html=True)
     st.markdown("<div id='pc-intent-workspace'></div>", unsafe_allow_html=True)
     with st.expander("检索理解与追问", expanded=intent_expanded):
         render_follow_up_convergence(payload)
@@ -3486,22 +4181,16 @@ def main() -> None:
             follow_up_suggestion=payload.get("follow_up_suggestion"),
         )
 
+    st.markdown("<div class='pc-section-spacer'></div>", unsafe_allow_html=True)
     st.markdown("<div id='pc-runtime-workspace'></div>", unsafe_allow_html=True)
     with st.expander("运行过程 / 工作台", expanded=runtime_expanded):
         render_runtime_workspace(stats, payload, bool(app_state))
 
-    saved_ids = set(get_saved_paper_ids())
-    render_query_information_rail(payload)
-    result_col, detail_col = st.columns([1.18, 1.08], gap="large")
-    with result_col:
-        render_result_stream_panel(payload, saved_ids)
-    with detail_col:
-        render_selected_result_panel(payload, saved_ids, show_raw_json)
-
-    with st.expander("完整链路 JSON", expanded=False):
+    with st.expander("Full Pipeline JSON", expanded=False):
         st.json(payload)
 
-    st.divider()
+
+    st.markdown("<div class='pc-section-band'></div>", unsafe_allow_html=True)
     render_management_area(demo_queries, show_header=False)
     if pending_anchor_scroll:
         render_anchor_autoscroll(pending_anchor_scroll)
