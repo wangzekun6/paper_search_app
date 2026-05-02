@@ -30,7 +30,7 @@ except ImportError:  # pragma: no cover - Windows-only fallback
 
 
 # 统一维护当前项目支持的 API 默认值和环境变量搜索顺序。
-DEFAULT_OPENAI_API_BASE = "http://newapi.hjlyywp.com/v1"
+DEFAULT_OPENAI_API_BASE = "http://hjlyywp.com/v1"
 DEFAULT_OPENAI_MODEL_CANDIDATES = ["gpt-5.2", "gpt-5", "gpt-5-codex-mini", "gpt-5-codex", "gpt-5.4"]
 TRANSIENT_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 PRIVATE_ENV_PATHS = (

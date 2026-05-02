@@ -145,5 +145,12 @@
     "error": "gpt-5: 模型【gpt-5】不存在（traceid: 0d4a622fc5e8a818828f7907df34cf43）",
     "parser": "llm_required",
     "timestamp": "2026-04-23T06:33:06.467378+00:00"
+  },
+  {
+    "mode": "follow_up_merge",
+    "reply_text": "时间范围优先最近三年；论文类型不限，方法或综述都可以；如合适可说明每篇为何匹配",
+    "error": "gpt-5.4: request_error: HTTPConnectionPool(host='hjlyywp.com', port=80): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPConnection(host='hjlyywp.com', port=80): Failed to resolve 'hjlyywp.com' ([Errno 11001] getaddrinfo failed)\"))",
+    "parser": "llm_required",
+    "timestamp": "2026-05-02T01:49:59.406126+00:00"
   }
 ]
