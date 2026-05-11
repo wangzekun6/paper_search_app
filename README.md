@@ -165,6 +165,27 @@ system_outputs/cache/semantic_cards/
 - 标准 query 高频命中的候选集可以优先覆盖；
 - 能够降低冷启动阶段的大模型生成压力。
 
+仓库中同时提供了一份预生成语义卡缓存归档：
+
+```text
+bundled_data/semantic_cards_cache_20260511.tar.gz
+```
+
+该归档包含约 4.3 万个语义卡 JSON 文件。克隆仓库后，如果需要恢复这批缓存，可以在项目根目录执行：
+
+```powershell
+tar -xzf bundled_data/semantic_cards_cache_20260511.tar.gz -C system_outputs/cache
+```
+
+解压后目录结构应为 `system_outputs/cache/semantic_cards/*.json`。随后运行构建或缓存恢复命令时，系统会按照论文 ID 自动导入可匹配的语义卡：
+
+```powershell
+cd tools
+python papercompass.py semantic-backfill --restore-cache-only
+```
+
+需要注意的是，语义卡缓存依赖论文 ID 匹配。如果当前数据库只包含部分论文，未命中的语义卡会被跳过，这不代表缓存文件损坏。
+
 ## 8. 仓库结构说明
 
 项目根目录当前主要结构如下：
