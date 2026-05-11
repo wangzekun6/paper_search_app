@@ -1,5 +1,5 @@
 """
-PaperCompass 的 Streamlit 可视化入口。
+PaperSearch 的 Streamlit 可视化入口。
 
 这个文件负责把检索主链路的输入、意图解析结果、Gap 分析、排序结果、
 语义卡片以及收藏/历史管理整合成一个可交互页面。
@@ -2757,7 +2757,7 @@ def render_hero_banner(stats: Dict[str, int]) -> None:
             "<div class='pc-hero'>",
             "<div class='pc-hero-copy'>",
             "<div class='pc-hero-kicker'>基于用户意图理解的学术论文检索与管理系统</div>",
-            "<div class='pc-hero-title'>PaperCompass 检索工作台</div>",
+            "<div class='pc-hero-title'>PaperSearch 检索工作台</div>",
             "<div class='pc-hero-subtitle'>",
             #"界面层改成更贴近论文插图和正式系统演示的样式，但检索主链路、意图解析、重排解释、收藏与历史逻辑保持不变。",
             "</div>",
@@ -2794,7 +2794,7 @@ def render_hero_dashboard(stats: Dict[str, int]) -> None:
             "<div class='pc-hero-copy'>",
             "<div>",
             "<div class='pc-hero-kicker'>基于用户意图理解的学术论文检索与管理系统</div>",
-            "<div class='pc-hero-title'>PaperCompass 检索工作台</div>",
+            "<div class='pc-hero-title'>PaperSearch 检索工作台</div>",
             "<div class='pc-hero-subtitle'>自然语言查询进入 IntentFrame 解析、混合召回、Query-Paper Match、重排解释和 Gap 诊断，形成可追问、可解释的论文检索闭环。</div>",
             "</div>",
             "<div class='pc-hero-dashboard'>",
@@ -4108,9 +4108,9 @@ def render_search_stage(stats: Dict[str, int], demo_queries: List[Dict[str, Any]
 
 def main() -> None:
     dataset_info = get_active_dataset_info()
-    st.set_page_config(page_title="PaperCompass", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="PaperSearch", layout="wide", initial_sidebar_state="expanded")
     inject_runtime_process_styles()
-    st.title("PaperCompass")
+    st.title("PaperSearch")
     st.caption(t("page_caption", dataset=str(dataset_info.get("label", "Dataset"))))
     apply_pending_query_state()
 

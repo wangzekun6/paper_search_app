@@ -1,6 +1,6 @@
-﻿# PaperCompass Tools
+﻿# PaperSearch Tools
 
-这个目录包含 PaperCompass 的可执行入口、前端界面以及核心业务模块。
+这个目录包含 PaperSearch 的可执行入口、前端界面以及核心业务模块。
 如果根目录 `README.md` 面向“怎么运行系统”，那么这个文件主要回答“代码分别放在哪里、每个文件负责什么”。
 
 ## 目录结构
